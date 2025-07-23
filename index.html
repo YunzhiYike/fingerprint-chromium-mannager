@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>指纹浏览器管理器</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="el-layout">
+        <header class="el-header app-header">
+            <div class="header-left">
+                <div class="brand-section">
+                    <i class="fas fa-shield-alt header-icon"></i>
+                    <div class="brand-text">
+                        <h1 class="header-title">指纹浏览器管理器</h1>
+                        <!-- <span class="header-subtitle">Fingerprint Browser Manager</span> -->
+                        <span class="header-subtitle">BY: 云知易客 📮: wuaiyiyun2022@163.com</span>
+                    </div>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-database"></i>
+                        <span>配置总数: <strong id="headerConfigCount">0</strong></span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-play-circle"></i>
+                        <span>运行中: <strong id="headerRunningCount">0</strong></span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="batch-actions">
+                    <button id="startAllBtn" class="el-button el-button--warning el-button--round">
+                        <i class="fas fa-play-circle"></i>
+                        <span>启动全部</span>
+                    </button>
+                    <button id="stopAllBtn" class="el-button el-button--danger el-button--round">
+                        <i class="fas fa-stop-circle"></i>
+                        <span>关闭全部</span>
+                    </button>
+                </div>
+                <div class="config-actions">
+                    <button id="addConfigBtn" class="el-button el-button--primary el-button--round">
+                        <i class="fas fa-plus-circle"></i>
+                        <span>新建配置</span>
+                    </button>
+                    <button id="refreshBtn" class="el-button el-button--success el-button--round">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>刷新</span>
+                    </button>
+                    <button id="settingsBtn" class="el-button el-button--info el-button--round">
+                        <i class="fas fa-cog"></i>
+                        <span>设置</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="el-container main-container">
+            <aside class="el-aside sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title-section">
+                        <h3 class="sidebar-title">
+                            <i class="fas fa-folder-open"></i>
+                            浏览器配置库
+                        </h3>
+                        <span id="configCount" class="el-badge el-badge--primary">
+                            <span class="el-badge__content">0</span>
+                        </span>
+                    </div>
+                    <div class="sidebar-tools">
+                        <button class="tool-btn" title="导入配置">
+                            <i class="fas fa-file-import"></i>
+                        </button>
+                        <button class="tool-btn" title="导出配置">
+                            <i class="fas fa-file-export"></i>
+                        </button>
+                        <button class="tool-btn" title="搜索配置">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="search-section">
+                    <div class="el-input search-input">
+                        <input type="text" id="searchInput" class="el-input__inner" placeholder="搜索配置名称...">
+                        <span class="el-input__prefix">
+                            <i class="fas fa-search"></i>
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="filter-section">
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" data-filter="all">
+                            <i class="fas fa-layer-group"></i>
+                            全部
+                        </button>
+                        <button class="filter-tab" data-filter="running">
+                            <i class="fas fa-play"></i>
+                            运行中
+                        </button>
+                        <button class="filter-tab" data-filter="stopped">
+                            <i class="fas fa-stop"></i>
+                            已停止
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="configList" class="config-list">
+                    <!-- 配置列表将在这里动态生成 -->
+                </div>
+            </aside>
+
+            <main class="el-main content-area">
+                <div id="welcomeScreen" class="welcome-screen">
+                    <div class="welcome-hero">
+                        <div class="hero-content">
+                            <div class="hero-icon">
+                                <i class="fas fa-rocket"></i>
+                            </div>
+                            <h2 class="hero-title">欢迎使用指纹浏览器管理器</h2>
+                            <p class="hero-subtitle">专业的浏览器指纹管理解决方案</p>
+                            <button id="quickStartBtn" class="el-button el-button--primary el-button--large">
+                                <i class="fas fa-play"></i>
+                                快速开始
+                            </button>
+                        </div>
+                        <div class="hero-stats">
+                            <div class="stat-card">
+                                <i class="fas fa-shield-alt"></i>
+                                <div class="stat-content">
+                                    <h3>安全防护</h3>
+                                    <p>多层指纹伪装技术</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-lightning-bolt"></i>
+                                <div class="stat-content">
+                                    <h3>高效管理</h3>
+                                    <p>一键启动多个实例</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fas fa-globe"></i>
+                                <div class="stat-content">
+                                    <h3>全球代理</h3>
+                                    <p>支持各种代理协议</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-section">
+                        <h3 class="section-title">
+                            <i class="fas fa-star"></i>
+                            核心功能
+                        </h3>
+                        <div class="feature-grid">
+                            <div class="feature-card premium">
+                                <div class="feature-header">
+                                    <i class="fas fa-fingerprint"></i>
+                                    <span class="feature-badge">核心</span>
+                                </div>
+                                <h4>指纹伪装</h4>
+                                <p>完整的浏览器指纹伪装，包括硬件信息、系统版本、浏览器特征等</p>
+                                <ul class="feature-list">
+                                    <li><i class="fas fa-check"></i> 32位指纹种子</li>
+                                    <li><i class="fas fa-check"></i> 多平台模拟</li>
+                                    <li><i class="fas fa-check"></i> 硬件信息伪装</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="feature-card">
+                                <div class="feature-header">
+                                    <i class="fas fa-network-wired"></i>
+                                </div>
+                                <h4>代理管理</h4>
+                                <p>支持HTTP、SOCKS代理，灵活配置网络环境</p>
+                                <ul class="feature-list">
+                                    <li><i class="fas fa-check"></i> HTTP/SOCKS协议</li>
+                                    <li><i class="fas fa-check"></i> 代理链支持</li>
+                                    <li><i class="fas fa-check"></i> 连接验证</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="feature-card">
+                                <div class="feature-header">
+                                    <i class="fas fa-language"></i>
+                                </div>
+                                <h4>多语言环境</h4>
+                                <p>模拟不同地区的语言和时区设置</p>
+                                <ul class="feature-list">
+                                    <li><i class="fas fa-check"></i> 多语言支持</li>
+                                    <li><i class="fas fa-check"></i> 时区模拟</li>
+                                    <li><i class="fas fa-check"></i> 地区设置</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="feature-card">
+                                <div class="feature-header">
+                                    <i class="fas fa-database"></i>
+                                </div>
+                                <h4>数据隔离</h4>
+                                <p>每个配置独立的数据存储，确保隐私安全</p>
+                                <ul class="feature-list">
+                                    <li><i class="fas fa-check"></i> 独立数据目录</li>
+                                    <li><i class="fas fa-check"></i> 自动路径管理</li>
+                                    <li><i class="fas fa-check"></i> 数据加密</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="settingsPage" class="settings-page" style="display: none;">
+                    <div class="settings-header">
+                        <div class="settings-title-section">
+                            <h3 class="settings-title">
+                                <i class="fas fa-cog"></i>
+                                系统设置
+                            </h3>
+                            <span class="settings-subtitle">配置应用程序参数</span>
+                        </div>
+                        <div class="settings-actions">
+                            <button id="saveSettingsBtn" class="el-button el-button--primary el-button--round">
+                                <i class="fas fa-save"></i>
+                                <span>保存设置</span>
+                            </button>
+                            <button id="resetSettingsBtn" class="el-button el-button--warning el-button--round">
+                                <i class="fas fa-undo"></i>
+                                <span>重置默认</span>
+                            </button>
+                            <button id="closeSettingsBtn" class="el-button el-button--default">
+                                <i class="fas fa-times"></i>
+                                <span>关闭</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="settings-content">
+                        <div class="el-card settings-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-globe"></i>
+                                    浏览器配置
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">
+                                        <i class="fas fa-chrome"></i>
+                                        Chromium 路径:
+                                    </label>
+                                    <div class="path-input-group">
+                                        <input type="text" id="chromiumPath" class="el-input__inner" 
+                                               placeholder="请选择 Chromium 浏览器路径..." readonly>
+                                        <button id="browseChromiumBtn" class="el-button el-button--default">
+                                            <i class="fas fa-folder-open"></i>
+                                            浏览
+                                        </button>
+                                    </div>
+                                    <div class="el-form-item__description">
+                                        选择 Chromium 浏览器的可执行文件路径，支持自定义 Chromium 版本
+                                    </div>
+                                </div>
+
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">
+                                        <i class="fas fa-folder"></i>
+                                        默认数据根目录:
+                                    </label>
+                                    <div class="path-input-group">
+                                        <input type="text" id="defaultUserDataRoot" class="el-input__inner" 
+                                               placeholder="默认用户数据存储根目录...">
+                                        <button id="browseDataRootBtn" class="el-button el-button--default">
+                                            <i class="fas fa-folder-open"></i>
+                                            浏览
+                                        </button>
+                                    </div>
+                                    <div class="el-form-item__description">
+                                        设置浏览器用户数据的默认存储根目录，每个配置会在此目录下创建子文件夹
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card settings-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-sliders-h"></i>
+                                    性能设置
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">
+                                        <i class="fas fa-hashtag"></i>
+                                        最大同时运行数:
+                                    </label>
+                                    <input type="number" id="maxRunningBrowsers" class="el-input__inner" 
+                                           min="1" max="50" placeholder="10">
+                                    <div class="el-form-item__description">
+                                        限制同时运行的浏览器实例数量，避免系统资源过度占用
+                                    </div>
+                                </div>
+
+                                <div class="el-form-item">
+                                    <label class="el-form-item__checkbox">
+                                        <input type="checkbox" id="autoCleanup" class="el-checkbox__input">
+                                        <span class="el-checkbox__label">
+                                            <i class="fas fa-broom"></i>
+                                            自动清理
+                                        </span>
+                                    </label>
+                                    <div class="el-form-item__description">
+                                        应用退出时自动清理所有浏览器进程和临时文件
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card settings-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-info-circle"></i>
+                                    系统信息
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <label>应用版本:</label>
+                                        <span>v1.0.0</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Electron 版本:</label>
+                                        <span id="electronVersion">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Node.js 版本:</label>
+                                        <span id="nodeVersion">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Chrome 版本:</label>
+                                        <span id="chromeVersion">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>操作系统:</label>
+                                        <span id="osInfo">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>配置文件:</label>
+                                        <span>browser-configs.json</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="configForm" class="config-form" style="display: none;">
+                    <div class="form-header">
+                        <div class="form-title-section">
+                            <h3 id="formTitle" class="form-title">
+                                <i class="fas fa-edit"></i>
+                                新建配置
+                            </h3>
+                            <span class="form-subtitle">配置您的专属浏览器指纹</span>
+                        </div>
+                        <div class="form-actions">
+                            <button id="saveConfigBtn" class="el-button el-button--success el-button--round">
+                                <i class="fas fa-save"></i>
+                                <span>保存配置</span>
+                            </button>
+                            <button id="launchBrowserBtn" class="el-button el-button--primary el-button--round">
+                                <i class="fas fa-rocket"></i>
+                                <span>启动浏览器</span>
+                            </button>
+                            <button id="previewBtn" class="el-button el-button--warning el-button--round">
+                                <i class="fas fa-eye"></i>
+                                <span>预览配置</span>
+                            </button>
+                            <button id="cancelBtn" class="el-button el-button--default">
+                                <i class="fas fa-times"></i>
+                                <span>取消</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-content">
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-info-circle"></i>
+                                    基本信息
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-row">
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">配置名称 *</label>
+                                            <div class="el-form-item__content">
+                                                <input type="text" id="configName" class="el-input__inner" required placeholder="输入配置名称">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">指纹种子</label>
+                                            <div class="el-form-item__content">
+                                                <div class="el-input-group">
+                                                    <input type="number" id="fingerprint" class="el-input__inner" placeholder="32位整数" min="0" max="4294967295">
+                                                    <div class="el-input-group__append">
+                                                        <button type="button" id="generateFingerprintBtn" class="el-button el-button--default">
+                                                            <i class="fas fa-dice"></i>
+                                                            随机生成
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-desktop"></i>
+                                    平台信息
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-row">
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">操作系统</label>
+                                            <div class="el-form-item__content">
+                                                <select id="platform" class="el-select el-input__inner">
+                                                    <option value="">选择操作系统</option>
+                                                    <option value="windows">Windows</option>
+                                                    <option value="linux">Linux</option>
+                                                    <option value="macos">macOS</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">系统版本</label>
+                                            <div class="el-form-item__content">
+                                                <input type="text" id="platformVersion" class="el-input__inner" placeholder="例如: 10.15.7">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fab fa-chrome"></i>
+                                    浏览器信息
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-row">
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">浏览器品牌</label>
+                                            <div class="el-form-item__content">
+                                                <select id="brand" class="el-select el-input__inner">
+                                                    <option value="">选择浏览器品牌</option>
+                                                    <option value="Chrome">Chrome</option>
+                                                    <option value="Edge">Edge</option>
+                                                    <option value="Opera">Opera</option>
+                                                    <option value="Vivaldi">Vivaldi</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">浏览器版本</label>
+                                            <div class="el-form-item__content">
+                                                <input type="text" id="brandVersion" class="el-input__inner" placeholder="例如: 120.0.6099.71">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-microchip"></i>
+                                    硬件信息
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-row">
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">CPU核心数</label>
+                                            <div class="el-form-item__content">
+                                                <input type="number" id="hardwareConcurrency" class="el-input__inner" min="1" max="64" placeholder="CPU核心数">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">网络设置</label>
+                                            <div class="el-form-item__content">
+                                                <label class="el-checkbox">
+                                                    <span class="el-checkbox__input">
+                                                        <input type="checkbox" id="disableNonProxiedUdp" class="el-checkbox__original" checked>
+                                                        <span class="el-checkbox__inner"></span>
+                                                    </span>
+                                                    <span class="el-checkbox__label">禁用非代理UDP连接 (推荐)</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-language"></i>
+                                    语言和地区
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-row">
+                                    <div class="el-col el-col-8">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">浏览器语言</label>
+                                            <div class="el-form-item__content">
+                                                <select id="language" class="el-select el-input__inner">
+                                                    <option value="">选择语言</option>
+                                                    <option value="zh-CN">中文 (简体)</option>
+                                                    <option value="zh-TW">中文 (繁体)</option>
+                                                    <option value="en-US">English (US)</option>
+                                                    <option value="en-GB">English (UK)</option>
+                                                    <option value="ja-JP">日本語</option>
+                                                    <option value="ko-KR">한국어</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-16">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">接受语言</label>
+                                            <div class="el-form-item__content">
+                                                <input type="text" id="acceptLanguage" class="el-input__inner" placeholder="例如: zh-CN,zh;q=0.9,en;q=0.8">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="el-row">
+                                    <div class="el-col el-col-24">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">时区</label>
+                                            <div class="el-form-item__content">
+                                                <select id="timezone" class="el-select el-input__inner">
+                                                    <option value="">选择时区</option>
+                                                    <option value="Asia/Shanghai">Asia/Shanghai</option>
+                                                    <option value="Asia/Tokyo">Asia/Tokyo</option>
+                                                    <option value="America/New_York">America/New_York</option>
+                                                    <option value="America/Los_Angeles">America/Los_Angeles</option>
+                                                    <option value="Europe/London">Europe/London</option>
+                                                    <option value="UTC">UTC</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-network-wired"></i>
+                                    代理设置
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">代理服务器</label>
+                                    <div class="el-form-item__content">
+                                        <input type="text" id="proxyServer" class="el-input__inner" placeholder="例如: http://127.0.0.1:8080 或 socks5://127.0.0.1:1080">
+                                        <div class="el-form-item__error">支持HTTP和SOCKS代理，暂不支持密码认证</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="el-card form-section">
+                            <div class="el-card__header">
+                                <span class="section-title">
+                                    <i class="fas fa-cogs"></i>
+                                    高级设置
+                                </span>
+                            </div>
+                            <div class="el-card__body">
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">数据存储根目录</label>
+                                    <div class="el-form-item__content">
+                                        <div class="el-input-group">
+                                            <input type="text" id="userDataRoot" class="el-input__inner" placeholder="选择数据存储的根目录，留空使用默认位置" readonly>
+                                            <div class="el-input-group__append">
+                                                <button type="button" id="browseRootBtn" class="el-button el-button--default">
+                                                    <i class="fas fa-folder-open"></i>
+                                                    选择根目录
+                                                </button>
+                                                <button type="button" id="resetRootBtn" class="el-button el-button--default">
+                                                    <i class="fas fa-undo"></i>
+                                                    重置
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="el-form-item__error">系统将在此目录下自动创建随机文件夹保存配置数据</div>
+                                        <div id="pathPreview" class="el-alert el-alert--info" style="display: none;">
+                                            <div class="el-alert__content">
+                                                <span class="el-alert__title"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <footer class="el-footer status-bar">
+            <div class="status-left">
+                <div class="status-group">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="statusText" class="status-text">就绪</span>
+                </div>
+                <div class="status-group">
+                    <i class="fas fa-clock"></i>
+                    <span id="currentTime" class="status-time"></span>
+                </div>
+            </div>
+            <div class="status-center">
+                <div class="memory-usage">
+                    <i class="fas fa-memory"></i>
+                    <span>内存使用: <strong id="memoryUsage">--</strong></span>
+                </div>
+            </div>
+            <div class="status-right">
+                <span id="runningCount" class="el-tag el-tag--success el-tag--small">
+                    <i class="fas fa-play"></i>
+                    运行中: 0
+                </span>
+                <span id="chromiumStatus" class="status-indicator">
+                    <i class="fas fa-circle status-dot"></i>
+                    <span class="status-label">Chromium 检测中...</span>
+                </span>
+                <div class="version-info">
+                    <i class="fas fa-code-branch"></i>
+                    <span>v1.0.0</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="renderer.js"></script>
+    <script>
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            window.browserManager = new BrowserConfigManager();
+        });
+    </script>
+</body>
+</html>

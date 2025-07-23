@@ -1,0 +1,26 @@
+{
+  "name": "chromium-manager",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "NODE_OPTIONS= electron .",
+    "dev": "NODE_OPTIONS= electron . --dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "fingerprint",
+    "browser",
+    "chromium",
+    "privacy"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Chromium Fingerprint Browser Manager",
+  "devDependencies": {
+    "electron": "^37.2.3",
+    "tailwindcss": "^4.1.11"
+  },
+  "dependencies": {
+    "uuid": "^9.0.1"
+  }
+}

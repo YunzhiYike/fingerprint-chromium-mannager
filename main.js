@@ -1,0 +1,592 @@
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+const { spawn, exec } = require('child_process');
+const fs = require('fs').promises;
+const os = require('os');
+
+// 配置文件路径
+const CONFIG_FILE = path.join(__dirname, 'browser-configs.json');
+const SETTINGS_FILE = path.join(__dirname, 'app-settings.json');
+
+// 默认设置
+const DEFAULT_SETTINGS = {
+  chromiumPath: '/Applications/Chromium 2.app/Contents/MacOS/Chromium',
+  defaultUserDataRoot: path.join(os.homedir(), 'Library', 'Application Support', 'ChromiumManager'),
+  autoCleanup: true,
+  maxRunningBrowsers: 10
+};
+
+let appSettings = { ...DEFAULT_SETTINGS };
+
+let mainWindow;
+
+// 跟踪运行中的浏览器进程
+const runningBrowsers = new Map(); // configId -> { pid, process, startTime }
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    titleBarStyle: 'hiddenInset',
+    show: false
+  });
+
+  mainWindow.loadFile('index.html');
+  
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+      // 开发模式下打开开发者工具
+    if (process.argv.includes('--dev')) {
+        mainWindow.webContents.openDevTools();
+    }
+
+    // 窗口关闭前的处理
+    mainWindow.on('close', async (event) => {
+        console.log('窗口准备关闭，正在清理浏览器进程...');
+        try {
+            // 先阻止窗口关闭，等待清理完成
+            event.preventDefault();
+            
+            // 通知渲染进程开始清理
+            mainWindow.webContents.send('app-will-quit');
+            
+            // 等待一段时间让渲染进程处理
+            setTimeout(() => {
+                // 强制关闭所有浏览器进程
+                cleanup();
+                
+                // 真正关闭窗口
+                mainWindow.destroy();
+            }, 1000);
+        } catch (error) {
+            console.error('清理过程出错:', error);
+            mainWindow.destroy();
+        }
+    });
+}
+
+app.whenReady().then(async () => {
+    await loadAppSettings();
+    createWindow();
+});
+
+// 应用退出前的清理
+app.on('before-quit', async () => {
+    console.log('应用准备退出，正在清理所有浏览器进程...');
+    cleanup();
+});
+
+app.on('window-all-closed', () => {
+    // 清理所有浏览器进程
+    cleanup();
+    
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
+});
+
+app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+    }
+});
+
+// 处理异常退出
+process.on('SIGINT', () => {
+    console.log('接收到 SIGINT 信号，正在清理...');
+    cleanup();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('接收到 SIGTERM 信号，正在清理...');
+    cleanup();
+    process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('未捕获的异常:', error);
+    cleanup();
+    process.exit(1);
+});
+
+// 清理函数
+function cleanup() {
+    console.log('开始清理浏览器进程...');
+    
+    // 关闭所有追踪的浏览器进程
+    for (const [configId, browserInfo] of runningBrowsers.entries()) {
+        try {
+            if (browserInfo.process && !browserInfo.process.killed) {
+                console.log(`终止浏览器进程 ${browserInfo.pid} (${browserInfo.configName})`);
+                
+                // 尝试优雅关闭
+                browserInfo.process.kill('SIGTERM');
+                
+                // 如果进程没有在 3 秒内关闭，强制终止
+                setTimeout(() => {
+                    if (!browserInfo.process.killed) {
+                        browserInfo.process.kill('SIGKILL');
+                    }
+                }, 3000);
+            }
+        } catch (error) {
+            console.error(`关闭浏览器进程失败:`, error);
+        }
+    }
+    
+    // 清空进程列表
+    runningBrowsers.clear();
+    
+    console.log('浏览器进程清理完成');
+}
+
+// IPC handlers
+ipcMain.handle('load-configs', async () => {
+  try {
+    const data = await fs.readFile(CONFIG_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    return [];
+  }
+});
+
+ipcMain.handle('save-configs', async (event, configs) => {
+  try {
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(configs, null, 2));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('launch-browser', async (event, config) => {
+  try {
+    // 检查是否已有实例在运行
+    if (runningBrowsers.has(config.id)) {
+      return { success: false, error: '该配置的浏览器实例已在运行中' };
+    }
+
+    const args = await buildChromiumArgs(config);
+    
+    const child = spawn(appSettings.chromiumPath, args, {
+      detached: true,
+      stdio: 'ignore'
+    });
+    
+    // 记录进程信息
+    runningBrowsers.set(config.id, {
+      pid: child.pid,
+      process: child,
+      startTime: new Date().toISOString(),
+      configName: config.name
+    });
+
+    // 监听进程退出事件
+    child.on('exit', () => {
+      runningBrowsers.delete(config.id);
+      // 通知渲染进程更新状态
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('browser-process-updated');
+      }
+    });
+
+    child.on('error', (error) => {
+      runningBrowsers.delete(config.id);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('browser-process-updated');
+      }
+    });
+    
+    child.unref();
+    
+    // 通知渲染进程更新状态
+    if (mainWindow) {
+      mainWindow.webContents.send('browser-process-updated');
+    }
+    
+    return { success: true, pid: child.pid };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('check-chromium-path', async () => {
+  try {
+    await fs.access(appSettings.chromiumPath);
+    return { exists: true, path: appSettings.chromiumPath };
+  } catch (error) {
+    return { exists: false, path: appSettings.chromiumPath, error: error.message };
+  }
+});
+
+ipcMain.handle('get-running-browsers', async () => {
+  const browsers = [];
+  for (const [configId, info] of runningBrowsers.entries()) {
+    browsers.push({
+      configId,
+      pid: info.pid,
+      configName: info.configName,
+      startTime: info.startTime
+    });
+  }
+  return browsers;
+});
+
+ipcMain.handle('activate-browser', async (event, configId) => {
+  try {
+    const browserInfo = runningBrowsers.get(configId);
+    if (!browserInfo) {
+      return { success: false, error: '浏览器进程未找到' };
+    }
+
+    // 在macOS上激活应用
+    return new Promise((resolve) => {
+      exec(`osascript -e 'tell application "System Events" to set frontmost of every process whose unix id is ${browserInfo.pid} to true'`, (error) => {
+        if (error) {
+          resolve({ success: false, error: '激活失败: ' + error.message });
+        } else {
+          resolve({ success: true });
+        }
+      });
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('terminate-browser', async (event, configId) => {
+  try {
+    const browserInfo = runningBrowsers.get(configId);
+    if (!browserInfo) {
+      return { success: false, error: '浏览器进程未找到' };
+    }
+
+    // 终止进程
+    process.kill(browserInfo.pid, 'SIGTERM');
+    
+    // 从映射中移除
+    runningBrowsers.delete(configId);
+    
+    // 通知渲染进程更新状态
+    if (mainWindow) {
+      mainWindow.webContents.send('browser-process-updated');
+    }
+    
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-default-data-root', async () => {
+  return appSettings.defaultUserDataRoot;
+});
+
+ipcMain.handle('generate-random-folder', () => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return `browser-${timestamp}-${random}`;
+});
+
+ipcMain.handle('show-root-folder-dialog', async () => {
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择数据存储根目录',
+      buttonLabel: '选择目录',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: path.join(os.homedir(), 'Documents')
+    });
+    
+    if (!result.canceled && result.filePaths.length > 0) {
+      return { success: true, path: result.filePaths[0] };
+    } else {
+      return { success: false, canceled: true };
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('create-user-data-dir', async (event, rootPath, randomFolder) => {
+  try {
+    const defaultRoot = appSettings.defaultUserDataRoot;
+    const actualRoot = rootPath || defaultRoot;
+    const fullPath = path.join(actualRoot, randomFolder);
+    
+    // 创建目录（递归创建，如果不存在的话）
+    await fs.mkdir(fullPath, { recursive: true });
+    
+    return { success: true, path: fullPath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 批量操作处理器
+ipcMain.handle('start-all-browsers', async () => {
+    console.log('=== 主进程: 处理 start-all-browsers 请求 ===');
+    try {
+        console.log('读取配置文件:', CONFIG_FILE);
+        // 读取所有配置
+        const data = await fs.readFile(CONFIG_FILE, 'utf8');
+        const configs = JSON.parse(data);
+        console.log('找到配置数量:', configs.length);
+        console.log('配置列表:', configs.map(c => ({ id: c.id, name: c.name })));
+        const results = [];
+        
+        for (const config of configs) {
+            console.log(`处理配置: ${config.name} (${config.id})`);
+            // 检查是否已经在运行
+            const isRunning = runningBrowsers.has(config.id);
+            console.log(`配置 ${config.name} 是否已运行:`, isRunning);
+            if (!isRunning) {
+                try {
+                    // 构建启动参数
+                    const args = await buildChromiumArgs(config);
+                    console.log(`配置 ${config.name} 启动参数:`, args);
+                    
+                    console.log(`启动浏览器: ${appSettings.chromiumPath}`);
+                    const child = spawn(appSettings.chromiumPath, args, {
+                        detached: true,
+                        stdio: 'ignore'
+                    });
+                    console.log(`浏览器启动成功，PID: ${child.pid}`);
+                    
+                    // 记录进程信息
+                    runningBrowsers.set(config.id, {
+                        pid: child.pid,
+                        process: child,
+                        startTime: new Date().toISOString(),
+                        configName: config.name
+                    });
+
+                                         // 监听进程退出事件
+                     child.on('exit', () => {
+                         runningBrowsers.delete(config.id);
+                         // 通知渲染进程更新状态
+                         if (mainWindow && !mainWindow.isDestroyed()) {
+                             mainWindow.webContents.send('browser-process-updated');
+                         }
+                     });
+
+                     child.on('error', (error) => {
+                         runningBrowsers.delete(config.id);
+                         if (mainWindow && !mainWindow.isDestroyed()) {
+                             mainWindow.webContents.send('browser-process-updated');
+                         }
+                     });
+                    
+                    child.unref();
+                    
+                    results.push({ configId: config.id, success: true, pid: child.pid });
+                } catch (error) {
+                    console.error(`配置 ${config.name} 启动失败:`, error);
+                    results.push({ configId: config.id, success: false, error: error.message });
+                }
+            } else {
+                results.push({ configId: config.id, success: false, error: '已在运行中' });
+            }
+        }
+        
+        // 通知渲染进程更新状态
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('browser-process-updated');
+        }
+        
+        return { success: true, results };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('stop-all-browsers', async () => {
+    try {
+        const results = [];
+        
+        // 复制数组，因为在终止过程中数组会被修改
+        const browsersToStop = Array.from(runningBrowsers.entries());
+        
+        for (const [configId, browserInfo] of browsersToStop) {
+            try {
+                if (browserInfo.process && !browserInfo.process.killed) {
+                    browserInfo.process.kill('SIGTERM');
+                    results.push({ configId, success: true });
+                } else {
+                    results.push({ configId, success: false, error: '进程已结束' });
+                }
+            } catch (error) {
+                results.push({ configId, success: false, error: error.message });
+            }
+        }
+        
+        // 清空运行列表
+        runningBrowsers.clear();
+        
+        // 通知渲染进程更新状态
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('browser-process-updated');
+        }
+        
+        return { success: true, results };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+async function buildChromiumArgs(config) {
+  const args = [];
+  
+  // 基础参数
+  if (config.fingerprint) {
+    args.push(`--fingerprint=${config.fingerprint}`);
+  }
+  
+  if (config.platform) {
+    args.push(`--fingerprint-platform=${config.platform}`);
+  }
+  
+  if (config.platformVersion) {
+    args.push(`--fingerprint-platform-version=${config.platformVersion}`);
+  }
+  
+  if (config.brand) {
+    args.push(`--fingerprint-brand=${config.brand}`);
+  }
+  
+  if (config.brandVersion) {
+    args.push(`--fingerprint-brand-version=${config.brandVersion}`);
+  }
+  
+  if (config.hardwareConcurrency) {
+    args.push(`--fingerprint-hardware-concurrency=${config.hardwareConcurrency}`);
+  }
+  
+  if (config.disableNonProxiedUdp) {
+    args.push('--disable-non-proxied-udp');
+  }
+  
+  if (config.language) {
+    args.push(`--lang=${config.language}`);
+  }
+  
+  if (config.acceptLanguage) {
+    args.push(`--accept-lang=${config.acceptLanguage}`);
+  }
+  
+  if (config.timezone) {
+    args.push(`--timezone=${config.timezone}`);
+  }
+  
+  if (config.proxyServer) {
+    args.push(`--proxy-server=${config.proxyServer}`);
+  }
+  
+  // 其他有用的参数
+  args.push('--no-first-run');
+  args.push('--no-default-browser-check');
+  
+  // 处理用户数据目录
+  try {
+    const defaultRoot = appSettings.defaultUserDataRoot;
+    const rootPath = config.userDataRoot || defaultRoot;
+    const randomFolder = config.randomFolder || `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const userDataDir = path.join(rootPath, randomFolder);
+    
+    // 确保目录存在
+    await fs.mkdir(userDataDir, { recursive: true });
+    args.push(`--user-data-dir=${userDataDir}`);
+  } catch (error) {
+    console.error('创建用户数据目录失败:', error);
+    // 如果创建失败，使用临时目录
+    const tempDir = path.join(os.tmpdir(), 'chromium-' + Date.now());
+    args.push(`--user-data-dir=${tempDir}`);
+  }
+  
+  return args;
+}
+
+// 应用设置管理
+async function loadAppSettings() {
+    try {
+        const data = await fs.readFile(SETTINGS_FILE, 'utf8');
+        appSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
+        console.log('应用设置已加载:', appSettings);
+    } catch (error) {
+        console.log('使用默认应用设置');
+        appSettings = { ...DEFAULT_SETTINGS };
+        await saveAppSettings();
+    }
+}
+
+async function saveAppSettings() {
+    try {
+        await fs.writeFile(SETTINGS_FILE, JSON.stringify(appSettings, null, 2));
+        console.log('应用设置已保存');
+        return { success: true };
+    } catch (error) {
+        console.error('保存应用设置失败:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// 设置相关的IPC处理器
+ipcMain.handle('get-app-settings', async () => {
+    return appSettings;
+});
+
+ipcMain.handle('save-app-settings', async (event, newSettings) => {
+    try {
+        appSettings = { ...appSettings, ...newSettings };
+        const result = await saveAppSettings();
+        return result;
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('reset-app-settings', async () => {
+    try {
+        appSettings = { ...DEFAULT_SETTINGS };
+        const result = await saveAppSettings();
+        return result;
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('browse-chromium-path', async () => {
+    try {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            title: '选择 Chromium 浏览器',
+            buttonLabel: '选择',
+            properties: ['openFile'],
+            filters: [
+                { name: 'Chromium', extensions: ['app'] },
+                { name: '可执行文件', extensions: ['*'] }
+            ],
+            defaultPath: '/Applications/'
+        });
+        
+        if (!result.canceled && result.filePaths.length > 0) {
+            let selectedPath = result.filePaths[0];
+            
+            // 如果选择的是 .app 文件，自动拼接到可执行文件路径
+            if (selectedPath.endsWith('.app')) {
+                selectedPath = path.join(selectedPath, 'Contents/MacOS/Chromium');
+            }
+            
+            return { success: true, path: selectedPath };
+        } else {
+            return { success: false, canceled: true };
+        }
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
