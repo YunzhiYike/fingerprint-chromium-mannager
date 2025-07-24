@@ -39,6 +39,8 @@ function createWindow() {
   
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    // 自动打开开发者工具查看调试信息
+    mainWindow.webContents.openDevTools();
   });
 
       // 开发模式下打开开发者工具
@@ -331,33 +333,31 @@ ipcMain.handle('create-user-data-dir', async (event, rootPath, randomFolder) => 
 
 // 批量操作处理器
 ipcMain.handle('start-all-browsers', async () => {
-    console.log('=== 主进程: 处理 start-all-browsers 请求 ===');
     try {
-        console.log('读取配置文件:', CONFIG_FILE);
         // 读取所有配置
         const data = await fs.readFile(CONFIG_FILE, 'utf8');
         const configs = JSON.parse(data);
-        console.log('找到配置数量:', configs.length);
-        console.log('配置列表:', configs.map(c => ({ id: c.id, name: c.name })));
         const results = [];
         
+        console.log('准备启动配置数量:', configs.length);
+        
         for (const config of configs) {
-            console.log(`处理配置: ${config.name} (${config.id})`);
             // 检查是否已经在运行
             const isRunning = runningBrowsers.has(config.id);
-            console.log(`配置 ${config.name} 是否已运行:`, isRunning);
+            console.log(`配置 ${config.name} (${config.id}) 是否已运行:`, isRunning);
+            
             if (!isRunning) {
                 try {
                     // 构建启动参数
                     const args = await buildChromiumArgs(config);
-                    console.log(`配置 ${config.name} 启动参数:`, args);
+                    console.log(`配置 ${config.name} 启动参数:`, args.join(' '));
                     
-                    console.log(`启动浏览器: ${appSettings.chromiumPath}`);
                     const child = spawn(appSettings.chromiumPath, args, {
                         detached: true,
                         stdio: 'ignore'
                     });
-                    console.log(`浏览器启动成功，PID: ${child.pid}`);
+                    
+                    console.log(`配置 ${config.name} 启动成功，PID:`, child.pid);
                     
                     // 记录进程信息
                     runningBrowsers.set(config.id, {
@@ -367,27 +367,27 @@ ipcMain.handle('start-all-browsers', async () => {
                         configName: config.name
                     });
 
-                                         // 监听进程退出事件
-                     child.on('exit', () => {
-                         runningBrowsers.delete(config.id);
-                         // 通知渲染进程更新状态
-                         if (mainWindow && !mainWindow.isDestroyed()) {
-                             mainWindow.webContents.send('browser-process-updated');
-                         }
-                     });
+                    // 监听进程退出事件
+                    child.on('exit', () => {
+                        runningBrowsers.delete(config.id);
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('browser-process-updated');
+                        }
+                    });
 
-                     child.on('error', (error) => {
-                         runningBrowsers.delete(config.id);
-                         if (mainWindow && !mainWindow.isDestroyed()) {
-                             mainWindow.webContents.send('browser-process-updated');
-                         }
-                     });
+                    child.on('error', (error) => {
+                        console.error(`配置 ${config.name} 进程错误:`, error);
+                        runningBrowsers.delete(config.id);
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('browser-process-updated');
+                        }
+                    });
                     
                     child.unref();
                     
                     results.push({ configId: config.id, success: true, pid: child.pid });
                 } catch (error) {
-                    console.error(`配置 ${config.name} 启动失败:`, error);
+                    console.error(`启动配置 ${config.name} 失败:`, error);
                     results.push({ configId: config.id, success: false, error: error.message });
                 }
             } else {
@@ -400,8 +400,11 @@ ipcMain.handle('start-all-browsers', async () => {
             mainWindow.webContents.send('browser-process-updated');
         }
         
-        return { success: true, results };
+        const finalResult = { success: true, results };
+        console.log('返回最终结果:', finalResult);
+        return finalResult;
     } catch (error) {
+        console.error('批量启动异常:', error);
         return { success: false, error: error.message };
     }
 });
@@ -491,6 +494,7 @@ async function buildChromiumArgs(config) {
   // 其他有用的参数
   args.push('--no-first-run');
   args.push('--no-default-browser-check');
+
   
   // 处理用户数据目录
   try {

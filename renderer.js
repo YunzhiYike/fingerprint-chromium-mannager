@@ -180,18 +180,26 @@ class BrowserConfigManager {
         this.startMemoryMonitoring();
 
         // 批量操作按钮
-        document.getElementById('startAllBtn')?.addEventListener('click', () => {
-            this.startAllBrowsers();
-        });
-
-        document.getElementById('stopAllBtn')?.addEventListener('click', () => {
-            this.stopAllBrowsers();
-        });
+        const startAllBtn = document.getElementById('startAllBtn');
+        const stopAllBtn = document.getElementById('stopAllBtn');
+        
+        if (startAllBtn) {
+            startAllBtn.addEventListener('click', () => {
+                this.startAllBrowsers();
+            });
+        }
+        
+        if (stopAllBtn) {
+            stopAllBtn.addEventListener('click', () => {
+                this.stopAllBrowsers();
+            });
+        }
 
         // 监听应用退出事件
         ipcRenderer.on('app-will-quit', () => {
             this.handleAppWillQuit();
         });
+
     }
 
     updateConfigList() {
@@ -692,7 +700,7 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             
         } catch (error) {
             console.error('加载设置失败:', error);
-            this.updateStatus('加载设置失败');
+            this.showStatus('加载设置失败');
         }
     }
 
@@ -708,15 +716,15 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             const result = await ipcRenderer.invoke('save-app-settings', newSettings);
             
             if (result.success) {
-                this.updateStatus('设置保存成功');
+                this.showStatus('设置保存成功');
                 // 刷新 Chromium 状态检查
                 this.checkChromiumStatus();
             } else {
-                this.updateStatus('设置保存失败: ' + result.error);
+                this.showStatus('设置保存失败: ' + result.error);
             }
         } catch (error) {
             console.error('保存设置失败:', error);
-            this.updateStatus('保存设置失败');
+            this.showStatus('保存设置失败');
         }
     }
 
@@ -726,15 +734,15 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
                 const result = await ipcRenderer.invoke('reset-app-settings');
                 
                 if (result.success) {
-                    this.updateStatus('设置已重置为默认值');
+                    this.showStatus('设置已重置为默认值');
                     await this.loadSettings();
                     this.checkChromiumStatus();
                 } else {
-                    this.updateStatus('重置设置失败: ' + result.error);
+                    this.showStatus('重置设置失败: ' + result.error);
                 }
             } catch (error) {
                 console.error('重置设置失败:', error);
-                this.updateStatus('重置设置失败');
+                this.showStatus('重置设置失败');
             }
         }
     }
@@ -745,13 +753,13 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             
             if (result.success) {
                 document.getElementById('chromiumPath').value = result.path;
-                this.updateStatus('Chromium 路径已选择');
+                this.showStatus('Chromium 路径已选择');
             } else if (!result.canceled) {
-                this.updateStatus('选择路径失败: ' + result.error);
+                this.showStatus('选择路径失败: ' + result.error);
             }
         } catch (error) {
             console.error('浏览 Chromium 路径失败:', error);
-            this.updateStatus('浏览路径失败');
+            this.showStatus('浏览路径失败');
         }
     }
 
@@ -761,13 +769,13 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             
             if (result.success) {
                 document.getElementById('defaultUserDataRoot').value = result.path;
-                this.updateStatus('数据根目录已选择');
+                this.showStatus('数据根目录已选择');
             } else if (!result.canceled) {
-                this.updateStatus('选择目录失败: ' + result.error);
+                this.showStatus('选择目录失败: ' + result.error);
             }
         } catch (error) {
             console.error('浏览数据根目录失败:', error);
-            this.updateStatus('浏览目录失败');
+            this.showStatus('浏览目录失败');
         }
     }
 
@@ -834,17 +842,13 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
     }
 
     async startAllBrowsers() {
-        console.log('=== 启动全部浏览器 ===');
         const startAllBtn = document.getElementById('startAllBtn');
         if (!startAllBtn) return;
 
-        console.log('当前配置数量:', this.configs.length);
-        console.log('配置列表:', this.configs);
-
         // 检查是否有配置
         if (this.configs.length === 0) {
-            this.updateStatus('没有可启动的配置');
-            console.warn('没有找到任何配置');
+            this.showStatus('没有可启动的配置');
+            alert('没有可启动的配置，请先创建浏览器配置');
             return;
         }
 
@@ -853,11 +857,10 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         startAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>启动中...</span>';
         
         try {
-            this.updateStatus('正在批量启动浏览器...');
-            console.log('开始调用 IPC: start-all-browsers');
+            this.showStatus('正在批量启动浏览器...');
             
             const result = await ipcRenderer.invoke('start-all-browsers');
-            console.log('IPC调用结果:', result);
+
             
             if (result.success) {
                 let successCount = 0;
@@ -872,16 +875,17 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
                     }
                 });
                 
-                this.updateStatus(`批量启动完成：成功 ${successCount} 个，失败 ${failCount} 个`);
+                this.showStatus(`批量启动完成：成功 ${successCount} 个，失败 ${failCount} 个`);
                 
                 // 刷新进程列表
-                await this.refreshRunningProcesses();
+                await this.loadRunningBrowsers();
             } else {
-                this.updateStatus(`批量启动失败: ${result.error}`);
+                this.showStatus(`批量启动失败: ${result.error}`);
             }
         } catch (error) {
+        
             console.error('批量启动浏览器失败:', error);
-            this.updateStatus('批量启动失败');
+            this.showStatus('批量启动失败');
         } finally {
             // 恢复按钮状态
             startAllBtn.disabled = false;
@@ -895,7 +899,7 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
 
         // 检查是否有运行中的浏览器
         if (this.runningBrowsers.length === 0) {
-            this.updateStatus('没有运行中的浏览器');
+            this.showStatus('没有运行中的浏览器');
             return;
         }
 
@@ -909,7 +913,7 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         stopAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>关闭中...</span>';
         
         try {
-            this.updateStatus('正在批量关闭浏览器...');
+            this.showStatus('正在批量关闭浏览器...');
             
             const result = await ipcRenderer.invoke('stop-all-browsers');
             
@@ -926,16 +930,16 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
                     }
                 });
                 
-                this.updateStatus(`批量关闭完成：成功 ${successCount} 个，失败 ${failCount} 个`);
+                this.showStatus(`批量关闭完成：成功 ${successCount} 个，失败 ${failCount} 个`);
                 
                 // 刷新进程列表
-                await this.refreshRunningProcesses();
+                await this.loadRunningBrowsers();
             } else {
-                this.updateStatus(`批量关闭失败: ${result.error}`);
+                this.showStatus(`批量关闭失败: ${result.error}`);
             }
         } catch (error) {
             console.error('批量关闭浏览器失败:', error);
-            this.updateStatus('批量关闭失败');
+            this.showStatus('批量关闭失败');
         } finally {
             // 恢复按钮状态
             stopAllBtn.disabled = false;
@@ -947,7 +951,7 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         console.log('应用即将退出，准备清理浏览器进程...');
         
         // 更新状态
-        this.updateStatus('应用退出中，正在关闭所有浏览器...');
+        this.showStatus('应用退出中，正在关闭所有浏览器...');
         
         // 尝试优雅关闭所有浏览器
         if (this.runningBrowsers.length > 0) {
