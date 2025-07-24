@@ -6,6 +6,7 @@ class BrowserConfigManager {
         this.configs = [];
         this.currentConfig = null;
         this.runningBrowsers = [];
+        this.browserListRefreshTimer = null;
         this.init();
     }
 
@@ -17,8 +18,14 @@ class BrowserConfigManager {
         this.updateUI();
         
         // 监听进程状态更新
-        ipcRenderer.on('browser-process-updated', () => {
-            this.loadRunningBrowsers();
+        ipcRenderer.on('browser-process-updated', async () => {
+            await this.loadRunningBrowsers();
+            
+            // 如果当前在批量任务页面，也更新浏览器列表
+            const batchTaskPage = document.getElementById('batchTaskPage');
+            if (batchTaskPage && batchTaskPage.style.display !== 'none') {
+                await this.updateRunningBrowsersList();
+            }
         });
     }
 
@@ -982,6 +989,9 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
     handleAppWillQuit() {
         console.log('应用即将退出，准备清理浏览器进程...');
         
+        // 停止定期刷新
+        this.stopBrowserListRefresh();
+        
         // 更新状态
         this.showStatus('应用退出中，正在关闭所有浏览器...');
         
@@ -1005,11 +1015,17 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         
         // 初始化任务表单
         this.initTaskForm();
+        
+        // 开始定期刷新浏览器列表
+        this.startBrowserListRefresh();
     }
 
     hideBatchTask() {
         document.getElementById('batchTaskPage').style.display = 'none';
         document.getElementById('welcomeScreen').style.display = 'block';
+        
+        // 停止定期刷新
+        this.stopBrowserListRefresh();
     }
 
     async updateRunningBrowsersList() {
@@ -1287,6 +1303,34 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
 
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // 定期刷新浏览器列表
+    startBrowserListRefresh() {
+        // 停止现有的刷新定时器
+        this.stopBrowserListRefresh();
+        
+        // 每5秒刷新一次浏览器列表
+        this.browserListRefreshTimer = setInterval(async () => {
+            const batchTaskPage = document.getElementById('batchTaskPage');
+            if (batchTaskPage && batchTaskPage.style.display !== 'none') {
+                try {
+                    await this.updateRunningBrowsersList();
+                } catch (error) {
+                    console.error('定期刷新浏览器列表失败:', error);
+                }
+            } else {
+                // 如果批量任务页面不再显示，停止刷新
+                this.stopBrowserListRefresh();
+            }
+        }, 5000);
+    }
+
+    stopBrowserListRefresh() {
+        if (this.browserListRefreshTimer) {
+            clearInterval(this.browserListRefreshTimer);
+            this.browserListRefreshTimer = null;
+        }
     }
 }
 

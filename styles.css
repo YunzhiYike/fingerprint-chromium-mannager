@@ -1558,35 +1558,83 @@ body {
     min-height: 0;
 }
 
+.batch-task-content .el-row {
+    align-items: stretch;
+}
+
+.batch-task-content .el-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.batch-task-content .el-card__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.batch-task-content .el-form {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 /* 运行中浏览器列表样式 */
 .running-browsers-list {
     min-height: 300px;
-    max-height: 400px;
+    max-height: 500px;
     overflow-y: auto;
     border-radius: 6px;
     background: #fafafa;
     border: 1px solid #ebeef5;
+    padding: 12px;
+    flex: 1;
+}
+
+.running-browsers-list:empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
 }
 
 .no-browsers {
     text-align: center;
-    padding: 40px 20px;
+    padding: 60px 20px;
     color: #909399;
+    background: #ffffff;
+    border-radius: 6px;
+    border: 2px dashed #e6e8eb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 250px;
 }
 
 .no-browsers i {
-    font-size: 48px;
-    margin-bottom: 16px;
+    font-size: 64px;
+    margin-bottom: 20px;
     color: #e6e8eb;
 }
 
 .no-browsers p {
     margin: 8px 0;
+    font-size: 16px;
+}
+
+.no-browsers p:first-of-type {
+    font-weight: 600;
+    color: #606266;
 }
 
 .no-browsers .hint {
-    font-size: 12px;
+    font-size: 13px;
     color: #c0c4cc;
+    margin-top: 8px;
 }
 
 .browser-item {
