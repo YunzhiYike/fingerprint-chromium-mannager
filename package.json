@@ -5,7 +5,15 @@
   "scripts": {
     "start": "NODE_OPTIONS= electron .",
     "dev": "NODE_OPTIONS= electron . --dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-all": "electron-builder --win --mac",
+    "pack": "electron-builder --dir",
+    "dist": "npm run build-all",
+    "postinstall": "electron-builder install-app-deps",
+    "generate-icon": "node scripts/convert-icon.js"
   },
   "keywords": [
     "fingerprint",
@@ -13,15 +21,130 @@
     "chromium",
     "privacy"
   ],
-  "author": "",
+  "author": "云知易客",
   "license": "ISC",
-  "description": "Chromium Fingerprint Browser Manager",
+  "description": "Chromium Fingerprint Browser Manager - 专业的浏览器指纹管理解决方案",
+  "homepage": "https://github.com/your-username/chromium-manager",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/chromium-manager.git"
+  },
   "devDependencies": {
     "electron": "^37.2.3",
+    "electron-builder": "^25.1.8",
     "tailwindcss": "^4.1.11"
   },
   "dependencies": {
     "uuid": "^9.0.1",
     "ws": "^8.18.0"
+  },
+  "build": {
+    "productName": "指纹浏览器管理器",
+    "appId": "com.chromium.manager",
+    "copyright": "Copyright © 2024 云知易客",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "browser-configs.json",
+        "to": "browser-configs.json",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "app-settings.json",
+        "to": "app-settings.json",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "指纹浏览器管理器",
+      "backgroundColor": "#f5f7fa",
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64", "ia32"]
+        }
+      ],
+      "publisherName": "云知易客",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "license": "build/license.txt"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Development"
+    },
+    "publish": null
   }
 }
