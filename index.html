@@ -47,6 +47,10 @@
                         <i class="fas fa-plus-circle"></i>
                         <span>新建配置</span>
                     </button>
+                    <button id="batchTaskBtn" class="el-button el-button--warning el-button--round">
+                        <i class="fas fa-tasks"></i>
+                        <span>批量任务</span>
+                    </button>
                     <button id="refreshBtn" class="el-button el-button--success el-button--round">
                         <i class="fas fa-sync-alt"></i>
                         <span>刷新</span>
@@ -355,6 +359,138 @@
                                     <div class="info-item">
                                         <label>配置文件:</label>
                                         <span>browser-configs.json</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="batchTaskPage" class="batch-task-page" style="display: none;">
+                    <div class="batch-task-header">
+                        <div class="task-title-section">
+                            <h3 class="task-title">
+                                <i class="fas fa-tasks"></i>
+                                批量任务管理
+                            </h3>
+                            <span class="task-subtitle">自动化浏览器操作</span>
+                        </div>
+                        <div class="task-actions">
+                            <button id="addTaskBtn" class="el-button el-button--primary el-button--round">
+                                <i class="fas fa-plus"></i>
+                                <span>新建任务</span>
+                            </button>
+                            <button id="executeTaskBtn" class="el-button el-button--success el-button--round">
+                                <i class="fas fa-play"></i>
+                                <span>执行任务</span>
+                            </button>
+                            <button id="stopTaskBtn" class="el-button el-button--danger el-button--round" disabled>
+                                <i class="fas fa-stop"></i>
+                                <span>停止任务</span>
+                            </button>
+                            <button id="closeBatchTaskBtn" class="el-button el-button--default">
+                                <i class="fas fa-times"></i>
+                                <span>关闭</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="batch-task-content">
+                        <div class="el-row">
+                            <div class="el-col el-col-8">
+                                <div class="el-card">
+                                    <div class="el-card__header">
+                                        <span class="section-title">
+                                            <i class="fas fa-globe"></i>
+                                            运行中的浏览器
+                                        </span>
+                                    </div>
+                                    <div class="el-card__body">
+                                        <div id="runningBrowsersList" class="running-browsers-list">
+                                            <!-- 运行中的浏览器列表 -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="el-col el-col-16">
+                                <div class="el-card">
+                                    <div class="el-card__header">
+                                        <span class="section-title">
+                                            <i class="fas fa-code"></i>
+                                            任务配置
+                                        </span>
+                                    </div>
+                                    <div class="el-card__body">
+                                        <div class="el-form">
+                                            <div class="el-form-item">
+                                                <label class="el-form-item__label">任务名称:</label>
+                                                <input type="text" id="taskName" class="el-input__inner" placeholder="输入任务名称">
+                                            </div>
+                                            
+                                            <div class="el-form-item">
+                                                <label class="el-form-item__label">任务类型:</label>
+                                                <select id="taskType" class="el-select el-input__inner">
+                                                    <option value="navigate">页面跳转</option>
+                                                    <option value="script">执行脚本</option>
+                                                    <option value="combined">组合任务</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div class="el-form-item" id="urlSection">
+                                                <label class="el-form-item__label">目标网址:</label>
+                                                <input type="url" id="targetUrl" class="el-input__inner" placeholder="https://example.com">
+                                            </div>
+                                            
+                                            <div class="el-form-item" id="delaySection">
+                                                <label class="el-form-item__label">延迟时间 (秒):</label>
+                                                <input type="number" id="taskDelay" class="el-input__inner" value="2" min="0" max="60" placeholder="执行间隔">
+                                            </div>
+                                            
+                                            <div class="el-form-item" id="scriptSection">
+                                                <label class="el-form-item__label">JavaScript 脚本:</label>
+                                                <textarea id="taskScript" class="el-textarea__inner" rows="8" placeholder="// 输入要执行的JavaScript代码
+// 例如：
+// document.title = '新标题';
+// document.querySelector('#login').click();
+// console.log('任务执行完成');"></textarea>
+                                            </div>
+                                            
+                                            <div class="el-form-item">
+                                                <label class="el-form-item__checkbox">
+                                                    <input type="checkbox" id="waitForLoad" class="el-checkbox__input" checked>
+                                                    <span class="el-checkbox__label">等待页面加载完成</span>
+                                                </label>
+                                            </div>
+                                            
+                                            <div class="el-form-item">
+                                                <label class="el-form-item__checkbox">
+                                                    <input type="checkbox" id="parallelExecution" class="el-checkbox__input">
+                                                    <span class="el-checkbox__label">并行执行 (同时在所有浏览器中执行)</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="el-row" style="margin-top: 20px;">
+                            <div class="el-col el-col-24">
+                                <div class="el-card">
+                                    <div class="el-card__header">
+                                        <span class="section-title">
+                                            <i class="fas fa-list"></i>
+                                            任务执行日志
+                                        </span>
+                                        <button id="clearLogBtn" class="el-button el-button--text">
+                                            <i class="fas fa-trash"></i>
+                                            清空日志
+                                        </button>
+                                    </div>
+                                    <div class="el-card__body">
+                                        <div id="taskLog" class="task-log">
+                                            <!-- 任务执行日志 -->
+                                        </div>
                                     </div>
                                 </div>
                             </div>

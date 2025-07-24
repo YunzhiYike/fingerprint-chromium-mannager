@@ -134,6 +134,13 @@ class BrowserConfigManager {
             });
         }
 
+        const batchTaskBtn = document.getElementById('batchTaskBtn');
+        if (batchTaskBtn) {
+            batchTaskBtn.addEventListener('click', () => {
+                this.showBatchTask();
+            });
+        }
+
         // 设置页面按钮事件
         document.getElementById('saveSettingsBtn')?.addEventListener('click', () => {
             this.saveSettings();
@@ -153,6 +160,31 @@ class BrowserConfigManager {
 
         document.getElementById('browseDataRootBtn')?.addEventListener('click', () => {
             this.browseDataRoot();
+        });
+
+        // 批量任务页面按钮事件
+        document.getElementById('closeBatchTaskBtn')?.addEventListener('click', () => {
+            this.hideBatchTask();
+        });
+
+        document.getElementById('addTaskBtn')?.addEventListener('click', () => {
+            this.addTask();
+        });
+
+        document.getElementById('executeTaskBtn')?.addEventListener('click', () => {
+            this.executeTask();
+        });
+
+        document.getElementById('stopTaskBtn')?.addEventListener('click', () => {
+            this.stopTask();
+        });
+
+        document.getElementById('clearLogBtn')?.addEventListener('click', () => {
+            this.clearTaskLog();
+        });
+
+        document.getElementById('taskType')?.addEventListener('change', (e) => {
+            this.updateTaskFormByType(e.target.value);
         });
 
         // 搜索功能
@@ -959,6 +991,302 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
                 console.error('清理浏览器进程时出错:', error);
             });
         }
+    }
+
+    // 批量任务相关方法
+    async showBatchTask() {
+        document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('configForm').style.display = 'none';
+        document.getElementById('settingsPage').style.display = 'none';
+        document.getElementById('batchTaskPage').style.display = 'flex';
+        
+        // 刷新运行中的浏览器列表
+        await this.updateRunningBrowsersList();
+        
+        // 初始化任务表单
+        this.initTaskForm();
+    }
+
+    hideBatchTask() {
+        document.getElementById('batchTaskPage').style.display = 'none';
+        document.getElementById('welcomeScreen').style.display = 'block';
+    }
+
+    async updateRunningBrowsersList() {
+        await this.loadRunningBrowsers();
+        
+        const listContainer = document.getElementById('runningBrowsersList');
+        listContainer.innerHTML = '';
+        
+        if (this.runningBrowsers.length === 0) {
+            listContainer.innerHTML = `
+                <div class="no-browsers">
+                    <i class="fas fa-browser"></i>
+                    <p>没有运行中的浏览器</p>
+                    <p class="hint">请先启动一些浏览器配置</p>
+                </div>
+            `;
+            return;
+        }
+
+        this.runningBrowsers.forEach(browser => {
+            const item = document.createElement('div');
+            item.className = 'browser-item';
+            item.dataset.configId = browser.configId;
+            
+            const startTime = new Date(browser.startTime).toLocaleTimeString();
+            
+            item.innerHTML = `
+                <div class="browser-info">
+                    <div class="browser-name">
+                        <i class="fas fa-globe"></i>
+                        ${browser.configName}
+                    </div>
+                    <div class="browser-details">
+                        <span class="pid">PID: ${browser.pid}</span>
+                        <span class="start-time">启动: ${startTime}</span>
+                    </div>
+                    <div class="debug-info">
+                        <span class="debug-port">调试端口: ${browser.debugPort}</span>
+                        <a href="${browser.debugUrl}" target="_blank" class="debug-link">
+                            <i class="fas fa-external-link-alt"></i>
+                            打开调试界面
+                        </a>
+                    </div>
+                </div>
+                <div class="browser-actions">
+                    <label class="browser-checkbox">
+                        <input type="checkbox" class="browser-select" value="${browser.configId}" checked>
+                        <span class="checkmark"></span>
+                    </label>
+                </div>
+            `;
+            
+            listContainer.appendChild(item);
+        });
+    }
+
+    initTaskForm() {
+        document.getElementById('taskName').value = '';
+        document.getElementById('taskType').value = 'navigate';
+        document.getElementById('targetUrl').value = '';
+        document.getElementById('taskDelay').value = '2';
+        document.getElementById('taskScript').value = '';
+        document.getElementById('waitForLoad').checked = true;
+        document.getElementById('parallelExecution').checked = false;
+        
+        this.updateTaskFormByType('navigate');
+    }
+
+    updateTaskFormByType(type) {
+        const urlSection = document.getElementById('urlSection');
+        const scriptSection = document.getElementById('scriptSection');
+        
+        switch (type) {
+            case 'navigate':
+                urlSection.style.display = 'block';
+                scriptSection.style.display = 'none';
+                break;
+            case 'script':
+                urlSection.style.display = 'none';
+                scriptSection.style.display = 'block';
+                break;
+            case 'combined':
+                urlSection.style.display = 'block';
+                scriptSection.style.display = 'block';
+                break;
+        }
+    }
+
+    addTask() {
+        const taskData = this.getTaskFormData();
+        if (!this.validateTask(taskData)) {
+            return;
+        }
+        
+        this.logTask('info', `任务已添加: ${taskData.name}`);
+        this.showStatus('任务添加成功', 'success');
+    }
+
+    getTaskFormData() {
+        return {
+            name: document.getElementById('taskName').value.trim(),
+            type: document.getElementById('taskType').value,
+            url: document.getElementById('targetUrl').value.trim(),
+            delay: parseInt(document.getElementById('taskDelay').value) || 2,
+            script: document.getElementById('taskScript').value.trim(),
+            waitForLoad: document.getElementById('waitForLoad').checked,
+            parallel: document.getElementById('parallelExecution').checked
+        };
+    }
+
+    validateTask(taskData) {
+        if (!taskData.name) {
+            this.showStatus('请输入任务名称', 'error');
+            return false;
+        }
+        
+        if (taskData.type === 'navigate' || taskData.type === 'combined') {
+            if (!taskData.url) {
+                this.showStatus('请输入目标网址', 'error');
+                return false;
+            }
+            
+            try {
+                new URL(taskData.url);
+            } catch {
+                this.showStatus('请输入有效的网址', 'error');
+                return false;
+            }
+        }
+        
+        if (taskData.type === 'script' || taskData.type === 'combined') {
+            if (!taskData.script) {
+                this.showStatus('请输入JavaScript脚本', 'error');
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    async executeTask() {
+        const taskData = this.getTaskFormData();
+        if (!this.validateTask(taskData)) {
+            return;
+        }
+
+        const selectedBrowsers = this.getSelectedBrowsers();
+        if (selectedBrowsers.length === 0) {
+            this.showStatus('请选择要执行任务的浏览器', 'error');
+            return;
+        }
+
+        this.setTaskExecutionState(true);
+        this.logTask('info', `开始执行任务: ${taskData.name}`);
+        this.logTask('info', `目标浏览器数量: ${selectedBrowsers.length}`);
+
+        try {
+            if (taskData.parallel) {
+                await this.executeTaskParallel(taskData, selectedBrowsers);
+            } else {
+                await this.executeTaskSequential(taskData, selectedBrowsers);
+            }
+            
+            this.logTask('success', '所有任务执行完成');
+            this.showStatus('任务执行完成', 'success');
+        } catch (error) {
+            this.logTask('error', `任务执行失败: ${error.message}`);
+            this.showStatus('任务执行失败', 'error');
+        } finally {
+            this.setTaskExecutionState(false);
+        }
+    }
+
+    getSelectedBrowsers() {
+        const checkboxes = document.querySelectorAll('.browser-select:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    setTaskExecutionState(executing) {
+        document.getElementById('executeTaskBtn').disabled = executing;
+        document.getElementById('stopTaskBtn').disabled = !executing;
+        
+        if (executing) {
+            document.getElementById('executeTaskBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>执行中...</span>';
+        } else {
+            document.getElementById('executeTaskBtn').innerHTML = '<i class="fas fa-play"></i><span>执行任务</span>';
+        }
+    }
+
+    async executeTaskParallel(taskData, selectedBrowsers) {
+        const promises = selectedBrowsers.map(configId => 
+            this.executeTaskOnBrowser(taskData, configId)
+        );
+        
+        await Promise.allSettled(promises);
+    }
+
+    async executeTaskSequential(taskData, selectedBrowsers) {
+        for (const configId of selectedBrowsers) {
+            await this.executeTaskOnBrowser(taskData, configId);
+            if (taskData.delay > 0) {
+                await this.sleep(taskData.delay * 1000);
+            }
+        }
+    }
+
+    async executeTaskOnBrowser(taskData, configId) {
+        const browser = this.runningBrowsers.find(b => b.configId === configId);
+        if (!browser) {
+            this.logTask('error', `浏览器 ${configId} 未找到`);
+            return;
+        }
+
+        this.logTask('info', `在浏览器 ${browser.configName} 中执行任务...`);
+
+        try {
+            const result = await ipcRenderer.invoke('execute-browser-task', {
+                configId,
+                debugPort: browser.debugPort,
+                task: taskData
+            });
+
+            if (result.success) {
+                this.logTask('success', `${browser.configName}: 任务执行成功`);
+            } else {
+                this.logTask('error', `${browser.configName}: ${result.error}`);
+            }
+        } catch (error) {
+            this.logTask('error', `${browser.configName}: ${error.message}`);
+        }
+    }
+
+    stopTask() {
+        this.setTaskExecutionState(false);
+        this.logTask('warning', '任务执行已停止');
+        this.showStatus('任务已停止', 'warning');
+    }
+
+    clearTaskLog() {
+        document.getElementById('taskLog').innerHTML = '';
+    }
+
+    logTask(type, message) {
+        const logContainer = document.getElementById('taskLog');
+        const timestamp = new Date().toLocaleTimeString();
+        
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type}`;
+        
+        let icon = '';
+        switch (type) {
+            case 'info':
+                icon = 'fas fa-info-circle';
+                break;
+            case 'success':
+                icon = 'fas fa-check-circle';
+                break;
+            case 'warning':
+                icon = 'fas fa-exclamation-triangle';
+                break;
+            case 'error':
+                icon = 'fas fa-times-circle';
+                break;
+        }
+        
+        logEntry.innerHTML = `
+            <span class="log-time">${timestamp}</span>
+            <i class="${icon}"></i>
+            <span class="log-message">${message}</span>
+        `;
+        
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 
