@@ -169,6 +169,15 @@ class BrowserConfigManager {
             this.browseDataRoot();
         });
 
+        // 浏览器下载相关事件
+        document.getElementById('downloadBrowserBtn')?.addEventListener('click', () => {
+            this.downloadBrowser();
+        });
+
+        document.getElementById('customInstallPathBtn')?.addEventListener('click', () => {
+            this.selectCustomInstallPath();
+        });
+
         // 批量任务页面按钮事件
         document.getElementById('closeBatchTaskBtn')?.addEventListener('click', () => {
             this.hideBatchTask();
@@ -237,6 +246,16 @@ class BrowserConfigManager {
         // 监听应用退出事件
         ipcRenderer.on('app-will-quit', () => {
             this.handleAppWillQuit();
+        });
+
+        // 监听浏览器下载进度
+        ipcRenderer.on('browser-download-progress', (event, data) => {
+            this.updateDownloadProgress(data);
+        });
+
+        // 监听浏览器安装完成
+        ipcRenderer.on('browser-install-complete', (event, data) => {
+            this.onBrowserInstallComplete(data);
         });
 
     }
@@ -752,6 +771,9 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             document.getElementById('defaultUserDataRoot').value = settings.defaultUserDataRoot || '';
             document.getElementById('maxRunningBrowsers').value = settings.maxRunningBrowsers || 10;
             document.getElementById('autoCleanup').checked = settings.autoCleanup !== false;
+            
+            // 加载浏览器下载信息
+            await this.loadBrowserDownloadInfo();
             
         } catch (error) {
             console.error('加载设置失败:', error);
@@ -1347,6 +1369,166 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             clearInterval(this.browserListRefreshTimer);
             this.browserListRefreshTimer = null;
         }
+    }
+
+    // 浏览器下载相关方法
+    async loadBrowserDownloadInfo() {
+        try {
+            // 检查浏览器安装状态
+            const installStatus = await ipcRenderer.invoke('check-browser-installation');
+            
+            if (installStatus.installed) {
+                this.showBrowserInstalled(installStatus.path);
+            } else {
+                // 获取下载信息
+                const downloadInfo = await ipcRenderer.invoke('get-browser-download-info');
+                
+                if (downloadInfo.success) {
+                    this.showBrowserDownloadInfo(downloadInfo);
+                } else {
+                    this.showBrowserError(downloadInfo.error);
+                }
+            }
+            
+        } catch (error) {
+            console.error('加载浏览器下载信息失败:', error);
+            this.showBrowserError(error.message);
+        }
+    }
+
+    showBrowserInstalled(path) {
+        const statusInfo = document.getElementById('browserStatusInfo');
+        statusInfo.className = 'el-alert el-alert--success';
+        statusInfo.innerHTML = `
+            <div class="el-alert__content">
+                <span class="el-alert__title">
+                    <i class="fas fa-check-circle"></i>
+                    浏览器已安装并配置
+                </span>
+                <p class="el-alert__description">路径: ${path}</p>
+            </div>
+        `;
+        
+        document.getElementById('browserDownloadControls').style.display = 'none';
+    }
+
+    showBrowserDownloadInfo(info) {
+        const statusInfo = document.getElementById('browserStatusInfo');
+        statusInfo.className = 'el-alert el-alert--warning';
+        statusInfo.innerHTML = `
+            <div class="el-alert__content">
+                <span class="el-alert__title">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    未检测到浏览器安装
+                </span>
+                <p class="el-alert__description">点击下方按钮自动下载安装</p>
+            </div>
+        `;
+        
+        // 显示下载信息
+        document.getElementById('detectedPlatform').textContent = `${info.platform.platform}-${info.platform.arch}`;
+        document.getElementById('latestVersion').textContent = info.latestVersion.version || '最新版';
+        document.getElementById('installPath').textContent = info.defaultInstallPath;
+        
+        document.getElementById('browserDownloadControls').style.display = 'block';
+    }
+
+    showBrowserError(error) {
+        const statusInfo = document.getElementById('browserStatusInfo');
+        statusInfo.className = 'el-alert el-alert--error';
+        statusInfo.innerHTML = `
+            <div class="el-alert__content">
+                <span class="el-alert__title">
+                    <i class="fas fa-times-circle"></i>
+                    检测浏览器状态失败
+                </span>
+                <p class="el-alert__description">${error}</p>
+            </div>
+        `;
+        
+        document.getElementById('browserDownloadControls').style.display = 'none';
+    }
+
+    async downloadBrowser() {
+        try {
+            const downloadBtn = document.getElementById('downloadBrowserBtn');
+            const progressDiv = document.getElementById('downloadProgress');
+            
+            // 禁用按钮，显示进度
+            downloadBtn.disabled = true;
+            downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>准备下载...</span>';
+            progressDiv.style.display = 'block';
+            
+            // 开始下载
+            const result = await ipcRenderer.invoke('download-install-browser');
+            
+            if (result.success) {
+                this.showStatus('浏览器下载安装成功！', 'success');
+            } else {
+                this.showStatus('下载安装失败: ' + result.error, 'error');
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i><span>重试下载</span>';
+                progressDiv.style.display = 'none';
+            }
+            
+        } catch (error) {
+            console.error('下载浏览器失败:', error);
+            this.showStatus('下载失败: ' + error.message, 'error');
+        }
+    }
+
+    async selectCustomInstallPath() {
+        try {
+            const result = await ipcRenderer.invoke('show-root-folder-dialog');
+            
+            if (result.success) {
+                document.getElementById('installPath').textContent = result.path;
+                this.showStatus('自定义安装路径已选择', 'success');
+            }
+        } catch (error) {
+            this.showStatus('选择路径失败: ' + error.message, 'error');
+        }
+    }
+
+    updateDownloadProgress(data) {
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const downloadedSize = document.getElementById('downloadedSize');
+        const totalSize = document.getElementById('totalSize');
+        
+        if (progressText && progressPercent && progressBarFill) {
+            progressText.textContent = '正在下载...';
+            progressPercent.textContent = `${data.progress}%`;
+            progressBarFill.style.width = `${data.progress}%`;
+            
+            const downloadedMB = (data.downloaded / 1024 / 1024).toFixed(1);
+            const totalMB = (data.total / 1024 / 1024).toFixed(1);
+            
+            if (downloadedSize) downloadedSize.textContent = `${downloadedMB} MB`;
+            if (totalSize) totalSize.textContent = `${totalMB} MB`;
+        }
+    }
+
+    onBrowserInstallComplete(data) {
+        const downloadBtn = document.getElementById('downloadBrowserBtn');
+        const progressDiv = document.getElementById('downloadProgress');
+        
+        if (data.success) {
+            // 更新UI显示安装成功
+            this.showBrowserInstalled(data.executablePath);
+            
+            // 更新浏览器路径输入框
+            document.getElementById('chromiumPath').value = data.executablePath;
+            
+            this.showStatus('浏览器安装成功，路径已自动配置！', 'success');
+        } else {
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i><span>重试下载</span>';
+            this.showStatus('安装失败: ' + (data.error || '未知错误'), 'error');
+        }
+        
+        progressDiv.style.display = 'none';
     }
 }
 

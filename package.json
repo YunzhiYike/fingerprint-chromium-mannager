@@ -51,6 +51,8 @@
     "files": [
       "main.js",
       "renderer.js",
+      "proxy-forwarder.js",
+      "browser-downloader.js",
       "index.html",
       "styles.css",
       "package.json",

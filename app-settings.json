@@ -1,5 +1,5 @@
 {
-  "chromiumPath": "/Applications/Chromium 2.app/Contents/MacOS/Chromium",
+  "chromiumPath": "/Users/songjun/Library/Application Support/ChromiumManager/Browser/installed/Chromium.app/Contents/MacOS/Chromium",
   "defaultUserDataRoot": "/Users/songjun/Library/Application Support/ChromiumManager",
   "autoCleanup": true,
   "maxRunningBrowsers": 10

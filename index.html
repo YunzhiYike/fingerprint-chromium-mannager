@@ -274,6 +274,58 @@
 
                                 <div class="el-form-item">
                                     <label class="el-form-item__label">
+                                        <i class="fas fa-download"></i>
+                                        自动下载安装:
+                                    </label>
+                                    <div id="browserDownloadSection">
+                                        <div class="el-alert el-alert--info" id="browserStatusInfo">
+                                            <div class="el-alert__content">
+                                                <span class="el-alert__title">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    检测浏览器状态中...
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div id="browserDownloadControls" style="display: none; margin-top: 15px;">
+                                            <div class="download-info" id="downloadInfo">
+                                                <p><strong>系统平台:</strong> <span id="detectedPlatform">-</span></p>
+                                                <p><strong>最新版本:</strong> <span id="latestVersion">-</span></p>
+                                                <p><strong>安装路径:</strong> <span id="installPath">-</span></p>
+                                            </div>
+                                            
+                                            <div class="download-actions">
+                                                <button id="downloadBrowserBtn" class="el-button el-button--primary">
+                                                    <i class="fas fa-download"></i>
+                                                    <span>下载并安装 Chromium</span>
+                                                </button>
+                                                <button id="customInstallPathBtn" class="el-button el-button--default">
+                                                    <i class="fas fa-folder"></i>
+                                                    <span>自定义安装路径</span>
+                                                </button>
+                                            </div>
+                                            
+                                            <div id="downloadProgress" style="display: none; margin-top: 15px;">
+                                                <div class="progress-info">
+                                                    <span id="progressText">准备下载...</span>
+                                                    <span id="progressPercent">0%</span>
+                                                </div>
+                                                <div class="progress-bar">
+                                                    <div id="progressBarFill" class="progress-fill" style="width: 0%"></div>
+                                                </div>
+                                                <div class="progress-details">
+                                                    <span id="downloadedSize">0 MB</span> / <span id="totalSize">0 MB</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-form-item__description">
+                                        自动下载、安装和配置指纹浏览器，无需手动设置路径
+                                    </div>
+                                </div>
+
+                                <div class="el-form-item">
+                                    <label class="el-form-item__label">
                                         <i class="fas fa-folder"></i>
                                         默认数据根目录:
                                     </label>

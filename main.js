@@ -4,6 +4,7 @@ const { spawn, exec } = require('child_process');
 const fs = require('fs').promises;
 const os = require('os');
 const ProxyForwarder = require('./proxy-forwarder');
+const BrowserDownloader = require('./browser-downloader');
 const { log } = require('console');
 
 // 配置文件路径
@@ -27,6 +28,9 @@ const runningBrowsers = new Map(); // configId -> { pid, process, startTime, deb
 
 // 代理转发器实例
 const proxyForwarder = new ProxyForwarder();
+
+// 浏览器下载器实例
+const browserDownloader = new BrowserDownloader();
 
 // 获取可用的调试端口
 async function getAvailableDebugPort() {
@@ -843,5 +847,79 @@ ipcMain.handle('browse-chromium-path', async () => {
         }
     } catch (error) {
         return { success: false, error: error.message };
+    }
+});
+
+// 浏览器下载相关IPC处理器
+ipcMain.handle('get-browser-download-info', async () => {
+    try {
+        const platform = browserDownloader.detectPlatform();
+        const defaultPath = browserDownloader.getDefaultInstallPath();
+        const latestVersion = await browserDownloader.getLatestVersion();
+        
+        return {
+            success: true,
+            platform: platform,
+            defaultInstallPath: defaultPath,
+            latestVersion: latestVersion,
+            downloadUrl: browserDownloader.getDownloadUrl()
+        };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('download-install-browser', async (event, installPath) => {
+    try {
+        // 发送进度更新
+        const onProgress = (progress, downloaded, total) => {
+            mainWindow.webContents.send('browser-download-progress', {
+                progress: progress,
+                downloaded: downloaded,
+                total: total
+            });
+        };
+        
+        const result = await browserDownloader.downloadAndInstall(installPath, onProgress);
+        
+        if (result.success) {
+            // 自动更新应用设置中的浏览器路径
+            appSettings.chromiumPath = result.executablePath;
+            await saveAppSettings();
+            
+            // 通知前端更新
+            mainWindow.webContents.send('browser-install-complete', result);
+        }
+        
+        return result;
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('check-browser-installation', async () => {
+    try {
+        const defaultPath = browserDownloader.getDefaultInstallPath();
+        
+        // 检查默认安装路径是否存在浏览器
+        const executablePath = await browserDownloader.findBrowserExecutable(defaultPath);
+        
+        if (executablePath) {
+            return {
+                installed: true,
+                path: executablePath,
+                autoDetected: true
+            };
+        } else {
+            return {
+                installed: false,
+                autoDetected: false
+            };
+        }
+    } catch (error) {
+        return {
+            installed: false,
+            error: error.message
+        };
     }
 });
