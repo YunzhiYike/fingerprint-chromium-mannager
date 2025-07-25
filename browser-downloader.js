@@ -229,20 +229,86 @@ class BrowserDownloader {
         console.log('处理为便携版浏览器');
         
         try {
-            // 创建浏览器目录
-            const browserDir = path.join(installPath, 'Browser');
-            await fs.mkdir(browserDir, { recursive: true });
+            const fileName = path.basename(exePath);
+            console.log(`处理文件: ${fileName}`);
             
-            // 复制可执行文件
-            const targetExePath = path.join(browserDir, path.basename(exePath));
-            await fs.copyFile(exePath, targetExePath);
+            // 检查文件大小，判断是否为自解压文件
+            const stat = await fs.stat(exePath);
+            console.log(`文件大小: ${Math.round(stat.size / 1024 / 1024)}MB`);
             
-            console.log(`便携版浏览器已准备: ${targetExePath}`);
-            return installPath;
+            if (stat.size > 50 * 1024 * 1024) { // 大于50MB，可能是自解压文件
+                console.log('检测为自解压文件，尝试解压...');
+                return await this.extractWindowsPortable(exePath, installPath);
+            } else {
+                console.log('检测为单个可执行文件，直接复制...');
+                // 直接复制到安装目录
+                const targetExePath = path.join(installPath, fileName);
+                await fs.copyFile(exePath, targetExePath);
+                
+                console.log(`便携版浏览器已准备: ${targetExePath}`);
+                return installPath;
+            }
             
         } catch (error) {
             throw new Error(`便携版处理失败: ${error.message}`);
         }
+    }
+
+    // 解压Windows便携版
+    async extractWindowsPortable(exePath, installPath) {
+        return new Promise((resolve, reject) => {
+            // 尝试多种解压方法
+            const extractMethods = [
+                // 方法1: 7-zip自解压格式
+                `"${exePath}" -o"${installPath}" -y`,
+                // 方法2: 带参数的自解压
+                `"${exePath}" /S /D="${installPath}"`,
+                // 方法3: 无参数自解压到当前目录
+                `cd "${installPath}" && "${exePath}"`,
+                // 方法4: WinRAR自解压格式
+                `"${exePath}" -x "${installPath}"`
+            ];
+            
+            let methodIndex = 0;
+            
+            const tryNextMethod = () => {
+                if (methodIndex >= extractMethods.length) {
+                    // 所有方法都失败，回退到复制单个文件
+                    console.log('所有解压方法失败，回退到单文件模式');
+                    this.copyAsingleFile(exePath, installPath)
+                        .then(resolve)
+                        .catch(reject);
+                    return;
+                }
+                
+                const command = extractMethods[methodIndex];
+                console.log(`尝试解压方法 ${methodIndex + 1}: ${command}`);
+                
+                exec(command, { timeout: 180000 }, (error, stdout, stderr) => {
+                    if (error) {
+                        console.log(`方法 ${methodIndex + 1} 失败:`, error.message);
+                        methodIndex++;
+                        tryNextMethod();
+                    } else {
+                        console.log(`方法 ${methodIndex + 1} 成功`);
+                        resolve(installPath);
+                    }
+                });
+            };
+            
+            tryNextMethod();
+        });
+    }
+
+    // 复制单个文件作为便携版
+    async copyAsingleFile(exePath, installPath) {
+        const fileName = path.basename(exePath);
+        const targetPath = path.join(installPath, fileName);
+        
+        await fs.copyFile(exePath, targetPath);
+        console.log(`单文件便携版准备完成: ${targetPath}`);
+        
+        return installPath;
     }
 
     // macOS DMG文件处理
@@ -452,6 +518,24 @@ class BrowserDownloader {
             const executablePath = await this.findBrowserExecutable(extractPath);
             
             if (!executablePath) {
+                // 如果找不到，打印目录结构进行调试
+                console.log('🔍 未找到可执行文件，打印安装目录结构：');
+                await this.printDirectoryStructure(extractPath);
+                
+                // 尝试在上级目录查找
+                const parentPath = path.dirname(extractPath);
+                console.log('🔍 尝试在上级目录查找...');
+                const parentExecutable = await this.findBrowserExecutable(parentPath);
+                
+                if (parentExecutable) {
+                    console.log(`✅ 在上级目录找到可执行文件: ${parentExecutable}`);
+                    return {
+                        success: true,
+                        executablePath: parentExecutable,
+                        installPath: parentPath
+                    };
+                }
+                
                 throw new Error('安装完成但未找到浏览器可执行文件');
             }
             
@@ -473,9 +557,11 @@ class BrowserDownloader {
     async findBrowserExecutable(searchPath) {
         const { platform } = this.detectPlatform();
         
+        console.log(`🔍 开始查找浏览器可执行文件，搜索路径: ${searchPath}`);
+        
         const executableNames = {
             windows: ['chrome.exe', 'chromium.exe', 'ungoogled-chromium.exe', 'Chromium.exe'],
-            macos: ['Chromium.app', 'Ungoogled Chromium.app', 'Chrome.app'],
+            macos: ['.app'], // 查找所有.app文件
             linux: ['chrome', 'chromium', 'chromium-browser', 'ungoogled-chromium']
         };
         
@@ -483,103 +569,239 @@ class BrowserDownloader {
         
         // 递归搜索可执行文件
         const searchExecutable = async (dir, depth = 0) => {
-            if (depth > 5) return null;
+            console.log(`📁 搜索目录: ${dir} (深度: ${depth})`);
+            
+            if (depth > 5) {
+                console.log(`⚠️ 达到最大搜索深度，停止搜索`);
+                return null;
+            }
             
             try {
                 const items = await fs.readdir(dir);
+                console.log(`📋 目录内容 (${items.length}项):`, items);
                 
                 // 首先在当前目录查找
-                for (const name of names) {
-                    if (items.includes(name)) {
-                        const fullPath = path.join(dir, name);
-                        
-                        // 对于macOS的.app文件，需要找到内部的可执行文件
-                        if (platform === 'macos' && name.endsWith('.app')) {
+                if (platform === 'macos') {
+                    // 对于macOS，查找所有.app文件
+                    for (const item of items) {
+                        if (item.endsWith('.app')) {
+                            const fullPath = path.join(dir, item);
+                            console.log(`🎯 找到.app文件: ${fullPath}`);
                             const macosPath = await this.findMacOSExecutable(fullPath);
                             if (macosPath) {
+                                console.log(`✅ 找到可执行文件: ${macosPath}`);
                                 return macosPath;
                             }
-                        } else {
+                        }
+                    }
+                } else {
+                    // Windows和Linux的查找逻辑
+                    for (const name of names) {
+                        if (items.includes(name)) {
+                            const fullPath = path.join(dir, name);
+                            console.log(`✅ 找到可执行文件: ${fullPath}`);
                             return fullPath;
+                        }
+                    }
+                    
+                    // Windows额外检查：查找任何.exe文件
+                    if (platform === 'windows') {
+                        for (const item of items) {
+                            if (item.toLowerCase().endsWith('.exe') && 
+                                (item.toLowerCase().includes('chrom') || 
+                                 item.toLowerCase().includes('browser'))) {
+                                const fullPath = path.join(dir, item);
+                                console.log(`✅ 找到Chrome相关可执行文件: ${fullPath}`);
+                                return fullPath;
+                            }
+                        }
+                        
+                        // 最后尝试：任何exe文件
+                        for (const item of items) {
+                            if (item.toLowerCase().endsWith('.exe')) {
+                                const fullPath = path.join(dir, item);
+                                console.log(`⚠️ 找到可执行文件(备选): ${fullPath}`);
+                                return fullPath;
+                            }
                         }
                     }
                 }
                 
                 // 递归搜索子目录
+                const directories = [];
                 for (const item of items) {
                     const itemPath = path.join(dir, item);
                     try {
                         const stat = await fs.stat(itemPath);
                         if (stat.isDirectory()) {
-                            const result = await searchExecutable(itemPath, depth + 1);
-                            if (result) return result;
+                            directories.push({name: item, path: itemPath});
                         }
                     } catch {
                         continue;
                     }
                 }
                 
-            } catch {
-                // 忽略无法访问的目录
+                console.log(`📂 发现 ${directories.length} 个子目录:`, directories.map(d => d.name));
+                
+                for (const dirInfo of directories) {
+                    console.log(`🔄 进入子目录: ${dirInfo.name}`);
+                    const result = await searchExecutable(dirInfo.path, depth + 1);
+                    if (result) {
+                        return result;
+                    }
+                }
+                
+            } catch (error) {
+                console.log(`❌ 无法访问目录 ${dir}: ${error.message}`);
             }
             
             return null;
         };
         
-        return await searchExecutable(searchPath);
+        // 首先检查搜索路径是否存在
+        try {
+            await fs.access(searchPath);
+            console.log(`✅ 搜索路径存在: ${searchPath}`);
+        } catch (error) {
+            console.log(`❌ 搜索路径不存在: ${searchPath}`);
+            return null;
+        }
+        
+        const result = await searchExecutable(searchPath);
+        
+        if (result) {
+            console.log(`🎉 搜索完成，找到可执行文件: ${result}`);
+        } else {
+            console.log(`😞 搜索完成，未找到可执行文件`);
+        }
+        
+        return result;
     }
 
     // 查找macOS .app内的可执行文件
     async findMacOSExecutable(appPath) {
+        console.log(`分析.app文件: ${appPath}`);
+        
         const macosDir = path.join(appPath, 'Contents', 'MacOS');
+        console.log(`MacOS目录: ${macosDir}`);
         
         try {
+            // 首先检查MacOS目录是否存在
+            try {
+                await fs.access(macosDir);
+                console.log('MacOS目录存在');
+            } catch {
+                console.log('MacOS目录不存在，跳过此.app文件');
+                return null;
+            }
+            
+            // 列出MacOS目录下的所有文件
+            const macosFiles = await fs.readdir(macosDir);
+            console.log('MacOS目录内容:', macosFiles);
+            
+            if (macosFiles.length === 0) {
+                console.log('MacOS目录为空');
+                return null;
+            }
+            
             // 尝试多种可能的可执行文件名
+            const appBaseName = path.basename(appPath, '.app');
             const possibleExecutables = [
-                path.basename(appPath, '.app'),
+                appBaseName,
                 'Chromium',
-                'chrome',
+                'chrome', 
                 'ungoogled-chromium',
-                'Ungoogled Chromium'
+                'Ungoogled Chromium',
+                // 添加一些常见的变体
+                appBaseName.replace(/\s+/g, ''),
+                appBaseName.replace(/\s+/g, '-'),
+                appBaseName.toLowerCase(),
+                appBaseName.toLowerCase().replace(/\s+/g, ''),
+                appBaseName.toLowerCase().replace(/\s+/g, '-')
             ];
             
+            console.log('尝试的可执行文件名:', possibleExecutables);
+            
             for (const execName of possibleExecutables) {
-                const execPath = path.join(macosDir, execName);
+                if (macosFiles.includes(execName)) {
+                    const execPath = path.join(macosDir, execName);
+                    try {
+                        const stat = await fs.stat(execPath);
+                        if (stat.isFile()) {
+                            // 检查文件是否可执行
+                            await fs.access(execPath, require('fs').constants.X_OK);
+                            console.log(`✅ 找到可执行文件: ${execPath}`);
+                            return execPath;
+                        }
+                    } catch (err) {
+                        console.log(`${execName} 不可执行:`, err.message);
+                        continue;
+                    }
+                }
+            }
+            
+            // 如果找不到匹配的名称，选择第一个可执行文件
+            console.log('尝试查找任何可执行文件...');
+            for (const file of macosFiles) {
+                const filePath = path.join(macosDir, file);
                 try {
-                    await fs.access(execPath);
-                    console.log(`找到macOS可执行文件: ${execPath}`);
-                    return execPath;
-                } catch {
+                    const stat = await fs.stat(filePath);
+                    if (stat.isFile()) {
+                        // 检查文件是否可执行
+                        await fs.access(filePath, require('fs').constants.X_OK);
+                        console.log(`✅ 找到可执行文件: ${filePath}`);
+                        return filePath;
+                    }
+                } catch (err) {
+                    console.log(`${file} 检查失败:`, err.message);
                     continue;
                 }
             }
             
-            // 如果找不到标准名称，列出所有文件并选择第一个可执行文件
-            try {
-                const macosFiles = await fs.readdir(macosDir);
-                for (const file of macosFiles) {
-                    const filePath = path.join(macosDir, file);
-                    try {
-                        const stat = await fs.stat(filePath);
-                        if (stat.isFile()) {
-                            // 检查文件是否可执行
-                            await fs.access(filePath, require('fs').constants.X_OK);
-                            console.log(`找到macOS可执行文件: ${filePath}`);
-                            return filePath;
-                        }
-                    } catch {
-                        continue;
-                    }
-                }
-            } catch {
-                // 忽略错误
-            }
-            
-        } catch {
-            // 忽略错误
+        } catch (error) {
+            console.error(`检查.app文件失败: ${error.message}`);
         }
         
         return null;
+    }
+
+    // 打印目录结构（用于调试）
+    async printDirectoryStructure(dirPath, prefix = '', maxDepth = 3, currentDepth = 0) {
+        if (currentDepth >= maxDepth) {
+            console.log(`${prefix}... (达到最大深度)`);
+            return;
+        }
+        
+        try {
+            const items = await fs.readdir(dirPath);
+            
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                const itemPath = path.join(dirPath, item);
+                const isLast = i === items.length - 1;
+                const currentPrefix = prefix + (isLast ? '└── ' : '├── ');
+                const nextPrefix = prefix + (isLast ? '    ' : '│   ');
+                
+                try {
+                    const stat = await fs.stat(itemPath);
+                    if (stat.isDirectory()) {
+                        console.log(`${currentPrefix}📁 ${item}/`);
+                        if (currentDepth < maxDepth - 1) {
+                            await this.printDirectoryStructure(itemPath, nextPrefix, maxDepth, currentDepth + 1);
+                        }
+                    } else {
+                        const size = Math.round(stat.size / 1024);
+                        const ext = path.extname(item).toLowerCase();
+                        const icon = ext === '.exe' ? '⚡' : ext === '.app' ? '📱' : '📄';
+                        console.log(`${currentPrefix}${icon} ${item} (${size}KB)`);
+                    }
+                } catch (statError) {
+                    console.log(`${currentPrefix}❌ ${item} (无法访问)`);
+                }
+            }
+        } catch (error) {
+            console.log(`❌ 无法读取目录 ${dirPath}: ${error.message}`);
+        }
     }
 
     // 获取最新版本信息
