@@ -663,7 +663,7 @@ class BrowserDownloader {
             await fs.access(searchPath);
             console.log(`✅ 搜索路径存在: ${searchPath}`);
         } catch (error) {
-            console.log(`❌ 搜索路径不存在: ${searchPath}`);
+            console.log(`ℹ️ 搜索路径不存在，这是正常的（浏览器尚未安装）: ${searchPath}`);
             return null;
         }
         
@@ -817,18 +817,26 @@ class BrowserDownloader {
     async checkInstallation(installPath = null) {
         const searchPath = installPath || this.getDefaultInstallPath();
         
+        console.log(`检查安装状态，搜索路径: ${searchPath}`);
+        
         try {
+            // 先检查路径是否存在
+            await fs.access(searchPath);
+            console.log('安装路径存在，开始查找可执行文件...');
+            
             const executablePath = await this.findBrowserExecutable(searchPath);
             return {
                 installed: !!executablePath,
                 executablePath,
                 installPath: searchPath
             };
-        } catch {
+        } catch (pathError) {
+            console.log(`安装路径不存在或无法访问: ${pathError.message}`);
             return {
                 installed: false,
                 executablePath: null,
-                installPath: searchPath
+                installPath: searchPath,
+                message: '浏览器尚未安装'
             };
         }
     }

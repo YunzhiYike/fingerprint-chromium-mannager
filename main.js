@@ -900,23 +900,41 @@ ipcMain.handle('download-install-browser', async (event, installPath) => {
 ipcMain.handle('check-browser-installation', async () => {
     try {
         const defaultPath = browserDownloader.getDefaultInstallPath();
+        console.log('检查浏览器安装状态，默认路径:', defaultPath);
         
-        // 检查默认安装路径是否存在浏览器
-        const executablePath = await browserDownloader.findBrowserExecutable(defaultPath);
-        
-        if (executablePath) {
-            return {
-                installed: true,
-                path: executablePath,
-                autoDetected: true
-            };
-        } else {
+        // 先检查默认安装路径是否存在
+        try {
+            const fs = require('fs').promises;
+            await fs.access(defaultPath);
+            console.log('默认安装路径存在，开始查找可执行文件...');
+            
+            // 检查默认安装路径是否存在浏览器
+            const executablePath = await browserDownloader.findBrowserExecutable(defaultPath);
+            
+            if (executablePath) {
+                console.log('找到已安装的浏览器:', executablePath);
+                return {
+                    installed: true,
+                    path: executablePath,
+                    autoDetected: true
+                };
+            } else {
+                console.log('默认路径存在但未找到浏览器可执行文件');
+                return {
+                    installed: false,
+                    autoDetected: false
+                };
+            }
+        } catch (pathError) {
+            console.log('默认安装路径不存在:', pathError.message);
             return {
                 installed: false,
-                autoDetected: false
+                autoDetected: false,
+                message: '浏览器尚未安装'
             };
         }
     } catch (error) {
+        console.error('检查浏览器安装状态时出错:', error);
         return {
             installed: false,
             error: error.message
