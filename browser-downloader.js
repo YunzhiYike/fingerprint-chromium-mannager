@@ -235,8 +235,13 @@ class BrowserDownloader {
         const fileName = path.basename(exePath).toLowerCase();
         console.log('文件名:', fileName);
         
-        if (fileName.includes('installer') || fileName.includes('setup')) {
-            // 标准安装程序
+        // 获取文件大小来辅助判断
+        const stat = await fs.stat(exePath);
+        const fileSizeMB = Math.round(stat.size / 1024 / 1024);
+        console.log(`文件大小: ${fileSizeMB}MB`);
+        
+        if (fileName.includes('installer') || fileName.includes('setup') || fileSizeMB > 80) {
+            // 标准安装程序（文件名包含installer/setup，或者文件大于80MB）
             console.log('检测为标准安装程序');
             return await this.runWindowsInstaller(exePath, installPath);
         } else {
@@ -268,7 +273,10 @@ class BrowserDownloader {
                     const executableInTargetPath = await this.findBrowserExecutable(installPath);
                     if (executableInTargetPath) {
                         console.log('✅ 浏览器已安装到指定路径:', executableInTargetPath);
-                        resolve(installPath);
+                        // 返回实际包含浏览器可执行文件的目录路径
+                        const actualInstallPath = path.dirname(executableInTargetPath);
+                        console.log('📍 实际安装目录:', actualInstallPath);
+                        resolve(actualInstallPath);
                         return;
                     }
                     
@@ -305,9 +313,22 @@ class BrowserDownloader {
             const stat = await fs.stat(exePath);
             console.log(`文件大小: ${Math.round(stat.size / 1024 / 1024)}MB`);
             
-            if (stat.size > 50 * 1024 * 1024) { // 大于50MB，可能是自解压文件
-                console.log('检测为自解压文件，尝试解压...');
-                return await this.extractWindowsPortable(exePath, installPath);
+            if (stat.size > 50 * 1024 * 1024) { // 大于50MB，可能是自解压文件或安装程序
+                console.log('检测为自解压文件或安装程序，尝试处理...');
+                const result = await this.extractWindowsPortable(exePath, installPath);
+                
+                // 如果返回的路径中没有浏览器可执行文件，检查系统路径
+                const executableInResult = await this.findBrowserExecutable(result);
+                if (!executableInResult) {
+                    console.log('🔍 处理结果中未找到浏览器，检查系统安装路径...');
+                    const systemInstallPath = await this.findWindowsInstallPath();
+                    if (systemInstallPath) {
+                        console.log(`✅ 在系统路径找到浏览器: ${systemInstallPath}`);
+                        return systemInstallPath;
+                    }
+                }
+                
+                return result;
             } else {
                 console.log('检测为单个可执行文件，直接复制...');
                 // 直接复制到安装目录
@@ -364,18 +385,36 @@ class BrowserDownloader {
                         methodIndex++;
                         tryNextMethod();
                     } else {
-                        // 检查是否有文件被解压
+                        console.log(`✅ 安装命令执行成功 (方法${methodIndex + 1})`);
+                        
+                        // 首先检查是否有文件被解压到指定目录
                         try {
                             const items = await fs.readdir(installPath);
                             if (items.length > 0) {
-                                resolve(installPath);
-                            } else {
-                                methodIndex++;
-                                tryNextMethod();
+                                console.log(`📁 指定目录有文件被创建: ${items.length}个项目`);
+                                
+                                // 检查解压目录中是否有浏览器可执行文件
+                                const executableInExtractPath = await this.findBrowserExecutable(installPath);
+                                if (executableInExtractPath) {
+                                    console.log(`🎯 在解压目录找到浏览器: ${executableInExtractPath}`);
+                                    const actualPath = path.dirname(executableInExtractPath);
+                                    resolve(actualPath);
+                                    return;
+                                }
                             }
-                        } catch {
-                            methodIndex++;
-                            tryNextMethod();
+                        } catch (readError) {
+                            console.log('读取解压目录失败:', readError.message);
+                        }
+                        
+                        // 如果解压目录没有浏览器，检查系统安装路径（可能是安装程序）
+                        console.log('🔍 解压目录未找到浏览器，检查系统安装路径...');
+                        const systemInstallPath = await this.findWindowsInstallPath();
+                        if (systemInstallPath) {
+                            console.log(`✅ 在系统路径找到浏览器: ${systemInstallPath}`);
+                            resolve(systemInstallPath);
+                        } else {
+                            console.log('❌ 系统路径也未找到浏览器');
+                            resolve(installPath); // 回退到原始逻辑
                         }
                     }
                 });
