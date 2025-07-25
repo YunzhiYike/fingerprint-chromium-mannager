@@ -408,21 +408,31 @@ class BrowserDownloader {
     // 查找Windows系统中的浏览器安装路径
     async findWindowsInstallPath() {
         console.log('🔍 开始搜索Windows系统中的浏览器安装路径...');
+        console.log('💡 根据实际安装模式，优先检查 AppData\\Local\\Chromium\\Application\\ 等路径');
         
         // Windows常见的浏览器安装路径
         const commonPaths = [
-            // 用户级安装路径
+            // 用户级安装路径 - 优先检查常见的Application子目录
+            path.join(os.homedir(), 'AppData', 'Local', 'Chromium', 'Application'),
             path.join(os.homedir(), 'AppData', 'Local', 'Chromium'),
+            path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'Application'),
             path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome'),
+            path.join(os.homedir(), 'AppData', 'Local', 'ungoogled-chromium', 'Application'),
             path.join(os.homedir(), 'AppData', 'Local', 'ungoogled-chromium'),
             path.join(os.homedir(), 'AppData', 'Local', 'ChromiumManager'),
             
-            // 系统级安装路径  
+            // 系统级安装路径 - 也检查Application子目录
+            'C:\\Program Files\\Google\\Chrome\\Application',
             'C:\\Program Files\\Google\\Chrome',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application',
             'C:\\Program Files (x86)\\Google\\Chrome',
+            'C:\\Program Files\\Chromium\\Application',
             'C:\\Program Files\\Chromium',
+            'C:\\Program Files (x86)\\Chromium\\Application',
             'C:\\Program Files (x86)\\Chromium',
+            'C:\\Program Files\\ungoogled-chromium\\Application',
             'C:\\Program Files\\ungoogled-chromium',
+            'C:\\Program Files (x86)\\ungoogled-chromium\\Application',
             'C:\\Program Files (x86)\\ungoogled-chromium',
             
             // 其他可能的路径
@@ -436,6 +446,20 @@ class BrowserDownloader {
         ];
         
         console.log(`📋 将检查 ${commonPaths.length} 个可能的安装路径`);
+        
+        // 首先检查最常见的安装模式：AppData\Local\Chromium\Application\chrome.exe
+        const mostLikelyPath = path.join(os.homedir(), 'AppData', 'Local', 'Chromium', 'Application', 'chrome.exe');
+        console.log(`🎯 优先检查最常见的安装路径: ${mostLikelyPath}`);
+        
+        try {
+            await fs.access(mostLikelyPath);
+            console.log(`✅ 找到最常见安装模式的浏览器: ${mostLikelyPath}`);
+            const installPath = path.dirname(mostLikelyPath);
+            console.log(`📍 确定安装路径: ${installPath}`);
+            return installPath;
+        } catch (error) {
+            console.log(`ℹ️ 最常见路径不存在，继续检查其他位置...`);
+        }
         
         for (const searchPath of commonPaths) {
             console.log(`📁 检查路径: ${searchPath}`);
@@ -482,7 +506,7 @@ class BrowserDownloader {
     // 从Windows注册表查找浏览器
     async findBrowserFromRegistry() {
         return new Promise((resolve) => {
-            // 检查常见的注册表路径
+                         // 检查常见的注册表路径
             const registryCommands = [
                 // Chrome注册表路径
                 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve',
@@ -491,6 +515,10 @@ class BrowserDownloader {
                 // Chromium注册表路径
                 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chromium.exe" /ve',
                 'reg query "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chromium.exe" /ve',
+                
+                // Chromium浏览器注册表位置（更广泛的搜索）
+                'reg query "HKEY_CURRENT_USER\\SOFTWARE\\Chromium" /s',
+                'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Chromium" /s',
                 
                 // 其他可能的路径
                 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Chromium"',
@@ -809,7 +837,7 @@ class BrowserDownloader {
         console.log(`🔍 开始查找浏览器可执行文件，搜索路径: ${searchPath}`);
         
         const executableNames = {
-            windows: ['chrome.exe', 'chromium.exe', 'ungoogled-chromium.exe', 'Chromium.exe'],
+            windows: ['chrome.exe', 'chromium.exe', 'ungoogled-chromium.exe', 'Chromium.exe', 'Chrome.exe'],
             macos: ['.app'], // 查找所有.app文件
             linux: ['chrome', 'chromium', 'chromium-browser', 'ungoogled-chromium']
         };
