@@ -3,6 +3,8 @@ const path = require('path');
 const { spawn, exec } = require('child_process');
 const fs = require('fs').promises;
 const os = require('os');
+const ProxyForwarder = require('./proxy-forwarder');
+const { log } = require('console');
 
 // 配置文件路径
 const CONFIG_FILE = path.join(__dirname, 'browser-configs.json');
@@ -21,7 +23,10 @@ let appSettings = { ...DEFAULT_SETTINGS };
 let mainWindow;
 
 // 跟踪运行中的浏览器进程
-const runningBrowsers = new Map(); // configId -> { pid, process, startTime, debugPort }
+const runningBrowsers = new Map(); // configId -> { pid, process, startTime, debugPort, proxyPort }
+
+// 代理转发器实例
+const proxyForwarder = new ProxyForwarder();
 
 // 获取可用的调试端口
 async function getAvailableDebugPort() {
@@ -129,18 +134,37 @@ process.on('SIGTERM', () => {
 });
 
 process.on('uncaughtException', (error) => {
-    console.error('未捕获的异常:', error);
+    console.warn('未捕获的异常 (已处理):', error.message);
+    // 记录详细错误信息，但不要让应用崩溃
+    if (error.code === 'ECONNRESET' || error.code === 'EPIPE' || error.code === 'ENOTFOUND') {
+        console.warn('网络连接错误，这通常是代理服务器的问题，应用继续运行');
+        return; // 不退出应用
+    }
+    
+    // 只有在严重错误时才退出
+    console.error('严重错误:', error);
     cleanup();
     process.exit(1);
 });
 
+// 处理未处理的Promise拒绝
+process.on('unhandledRejection', (reason, promise) => {
+    console.warn('未处理的Promise拒绝 (已处理):', reason);
+    // 不让Promise拒绝导致应用崩溃
+});
+
 // 清理函数
 function cleanup() {
-    console.log('开始清理浏览器进程...');
+    console.log('开始清理浏览器进程和代理转发器...');
     
     // 关闭所有追踪的浏览器进程
     for (const [configId, browserInfo] of runningBrowsers.entries()) {
         try {
+            // 停止相关的代理转发器
+            if (browserInfo.proxyPort) {
+                proxyForwarder.stopForwarder(configId);
+            }
+            
             if (browserInfo.process && !browserInfo.process.killed) {
                 console.log(`终止浏览器进程 ${browserInfo.pid} (${browserInfo.configName})`);
                 
@@ -159,10 +183,13 @@ function cleanup() {
         }
     }
     
+    // 停止所有代理转发器
+    proxyForwarder.stopAllForwarders();
+    
     // 清空进程列表
     runningBrowsers.clear();
     
-    console.log('浏览器进程清理完成');
+    console.log('浏览器进程和代理转发器清理完成');
 }
 
 // IPC handlers
@@ -191,7 +218,7 @@ ipcMain.handle('launch-browser', async (event, config) => {
       return { success: false, error: '该配置的浏览器实例已在运行中' };
     }
 
-    const { args, debugPort } = await buildChromiumArgs(config);
+    const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
     
     const child = spawn(appSettings.chromiumPath, args, {
       detached: true,
@@ -204,11 +231,16 @@ ipcMain.handle('launch-browser', async (event, config) => {
       process: child,
       startTime: new Date().toISOString(),
       configName: config.name,
-      debugPort: debugPort
+      debugPort: debugPort,
+      proxyPort: proxyPort
     });
 
     // 监听进程退出事件
     child.on('exit', () => {
+      // 停止相关的代理转发器
+      if (proxyPort) {
+        proxyForwarder.stopForwarder(config.id);
+      }
       runningBrowsers.delete(config.id);
       // 通知渲染进程更新状态
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -217,6 +249,10 @@ ipcMain.handle('launch-browser', async (event, config) => {
     });
 
     child.on('error', (error) => {
+      // 停止相关的代理转发器
+      if (proxyPort) {
+        proxyForwarder.stopForwarder(config.id);
+      }
       runningBrowsers.delete(config.id);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('browser-process-updated');
@@ -289,6 +325,11 @@ ipcMain.handle('terminate-browser', async (event, configId) => {
       return { success: false, error: '浏览器进程未找到' };
     }
 
+    // 停止相关的代理转发器
+    if (browserInfo.proxyPort) {
+      proxyForwarder.stopForwarder(configId);
+    }
+    
     // 终止进程
     process.kill(browserInfo.pid, 'SIGTERM');
     
@@ -368,7 +409,7 @@ ipcMain.handle('start-all-browsers', async () => {
             if (!isRunning) {
                 try {
                     // 构建启动参数
-                    const { args, debugPort } = await buildChromiumArgs(config);
+                    const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
                     console.log(`配置 ${config.name} 启动参数:`, args.join(' '));
                     
                     const child = spawn(appSettings.chromiumPath, args, {
@@ -384,11 +425,16 @@ ipcMain.handle('start-all-browsers', async () => {
                         process: child,
                         startTime: new Date().toISOString(),
                         configName: config.name,
-                        debugPort: debugPort
+                        debugPort: debugPort,
+                        proxyPort: proxyPort
                     });
 
                     // 监听进程退出事件
                     child.on('exit', () => {
+                        // 停止相关的代理转发器
+                        if (proxyPort) {
+                            proxyForwarder.stopForwarder(config.id);
+                        }
                         runningBrowsers.delete(config.id);
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('browser-process-updated');
@@ -397,6 +443,10 @@ ipcMain.handle('start-all-browsers', async () => {
 
                     child.on('error', (error) => {
                         console.error(`配置 ${config.name} 进程错误:`, error);
+                        // 停止相关的代理转发器
+                        if (proxyPort) {
+                            proxyForwarder.stopForwarder(config.id);
+                        }
                         runningBrowsers.delete(config.id);
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('browser-process-updated');
@@ -438,6 +488,11 @@ ipcMain.handle('stop-all-browsers', async () => {
         
         for (const [configId, browserInfo] of browsersToStop) {
             try {
+                // 停止相关的代理转发器
+                if (browserInfo.proxyPort) {
+                    proxyForwarder.stopForwarder(configId);
+                }
+                
                 if (browserInfo.process && !browserInfo.process.killed) {
                     browserInfo.process.kill('SIGTERM');
                     results.push({ configId, success: true });
@@ -504,11 +559,37 @@ async function buildChromiumArgs(config) {
   }
   
   if (config.timezone) {
-    args.push(`--timezone=${config.timezone}`);
+    console.log('timezone', config.timezone);
+    args.push(`--timezone="${config.timezone}"`);
   }
   
+  let proxyPort = null;
+  
   if (config.proxyServer) {
-    args.push(`--proxy-server=${config.proxyServer}`);
+    // 如果有认证信息，使用代理转发器
+    if (config.proxyUsername && config.proxyPassword) {
+      try {
+        const forwarderResult = await proxyForwarder.createForwarder(config);
+        if (forwarderResult.success) {
+          // 使用本地代理转发器
+          args.push(`--proxy-server=http://127.0.0.1:${forwarderResult.localPort}`);
+          proxyPort = forwarderResult.localPort;
+          console.log(`✅ 代理转发器启动成功: 127.0.0.1:${forwarderResult.localPort} -> ${config.proxyServer} (认证: ${config.proxyUsername}/****)`);
+        } else {
+          // 转发器创建失败，回退到原始代理配置
+          args.push(`--proxy-server=${config.proxyServer}`);
+          console.warn('❌ 代理转发器创建失败，使用原始代理配置:', forwarderResult.error);
+        }
+      } catch (error) {
+        // 转发器创建失败，回退到原始代理配置
+        args.push(`--proxy-server=${config.proxyServer}`);
+        console.warn('❌ 代理转发器创建失败，使用原始代理配置:', error.message);
+      }
+    } else {
+      // 无认证代理，直接使用
+      args.push(`--proxy-server=${config.proxyServer}`);
+      console.log('✅ 代理配置 (无认证):', config.proxyServer);
+    }
   }
   
   // 其他有用的参数
@@ -537,8 +618,10 @@ async function buildChromiumArgs(config) {
     args.push(`--user-data-dir=${tempDir}`);
   }
   
-  return { args, debugPort };
+  return { args, debugPort, proxyPort };
 }
+
+
 
 // 应用设置管理
 async function loadAppSettings() {

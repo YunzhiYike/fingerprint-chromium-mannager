@@ -258,7 +258,14 @@ class BrowserConfigManager {
 
         const platformInfo = config.platform ? config.platform : '未设置';
         const brandInfo = config.brand ? config.brand : '默认';
-        const proxyInfo = config.proxyServer ? '🔒 代理' : '直连';
+        let proxyInfo = '直连';
+        if (config.proxyServer) {
+            if (config.proxyUsername && config.proxyPassword) {
+                proxyInfo = '🔐 认证代理';
+            } else {
+                proxyInfo = '🔒 代理';
+            }
+        }
         
         // 检查是否正在运行
         const runningBrowser = this.runningBrowsers.find(b => b.configId === config.id);
@@ -384,6 +391,8 @@ class BrowserConfigManager {
         document.getElementById('acceptLanguage').value = config.acceptLanguage || '';
         document.getElementById('timezone').value = config.timezone || '';
         document.getElementById('proxyServer').value = config.proxyServer || '';
+        document.getElementById('proxyUsername').value = config.proxyUsername || '';
+        document.getElementById('proxyPassword').value = config.proxyPassword || '';
         document.getElementById('userDataRoot').value = config.userDataRoot || '';
         
         // 更新路径预览
@@ -450,6 +459,8 @@ class BrowserConfigManager {
             acceptLanguage: document.getElementById('acceptLanguage').value,
             timezone: document.getElementById('timezone').value,
             proxyServer: document.getElementById('proxyServer').value,
+            proxyUsername: document.getElementById('proxyUsername').value,
+            proxyPassword: document.getElementById('proxyPassword').value,
             userDataRoot: document.getElementById('userDataRoot').value,
             randomFolder: randomFolder
         };
@@ -684,9 +695,14 @@ class BrowserConfigManager {
         }
     }
 
-    previewConfig() {
-        const formData = this.getFormData();
+    async previewConfig() {
+        const formData = await this.getFormData();
         if (!formData) return;
+
+        let proxyDisplay = formData.proxyServer || '无';
+        if (formData.proxyServer && formData.proxyUsername && formData.proxyPassword) {
+            proxyDisplay += ` (认证: ${formData.proxyUsername}/****)`;
+        }
 
         const previewContent = `
             <div style="font-family: monospace; white-space: pre-line;">
@@ -700,7 +716,7 @@ CPU核心数: ${formData.hardwareConcurrency || '自动'}
 UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
 语言设置: ${formData.language || '默认'}
 时区设置: ${formData.timezone || '默认'}
-代理服务器: ${formData.proxyServer || '无'}
+代理服务器: ${proxyDisplay}
 存储根目录: ${formData.userDataRoot || '默认位置'}
             </div>
         `;

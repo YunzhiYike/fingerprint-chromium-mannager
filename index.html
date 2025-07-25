@@ -711,6 +711,7 @@
                                                 <select id="timezone" class="el-select el-input__inner">
                                                     <option value="">选择时区</option>
                                                     <option value="Asia/Shanghai">Asia/Shanghai</option>
+                                                    <option value="Asia/Seoul">Asia/Seoul</option>
                                                     <option value="Asia/Tokyo">Asia/Tokyo</option>
                                                     <option value="America/New_York">America/New_York</option>
                                                     <option value="America/Los_Angeles">America/Los_Angeles</option>
@@ -736,7 +737,46 @@
                                     <label class="el-form-item__label">代理服务器</label>
                                     <div class="el-form-item__content">
                                         <input type="text" id="proxyServer" class="el-input__inner" placeholder="例如: http://127.0.0.1:8080 或 socks5://127.0.0.1:1080">
-                                        <div class="el-form-item__error">支持HTTP和SOCKS代理，暂不支持密码认证</div>
+                                        <div class="el-form-item__error">支持HTTP和SOCKS代理，支持用户名密码认证</div>
+                                    </div>
+                                </div>
+                                <div class="el-row">
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">代理用户名</label>
+                                            <div class="el-form-item__content">
+                                                <input type="text" id="proxyUsername" class="el-input__inner" placeholder="代理认证用户名 (可选)">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="el-col el-col-12">
+                                        <div class="el-form-item">
+                                            <label class="el-form-item__label">代理密码</label>
+                                            <div class="el-form-item__content">
+                                                <input type="password" id="proxyPassword" class="el-input__inner" placeholder="代理认证密码 (可选)">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="el-form-item">
+                                    <div class="el-form-item__content">
+                                        <div class="el-alert el-alert--info">
+                                            <div class="el-alert__content">
+                                                <span class="el-alert__title">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    代理配置说明
+                                                </span>
+                                                <p class="el-alert__description">
+                                                    <strong>✅ HTTP代理认证（完全支持）:</strong><br>
+                                                    • 代理地址: http://proxy.com:8080<br>
+                                                    • 填写用户名和密码即可<br><br>
+                                                    <strong>⚠️ SOCKS代理认证（有限支持）:</strong><br>
+                                                    • SOCKS代理的认证需要特殊处理<br>
+                                                    • 建议联系代理商设置IP白名单<br>
+                                                    • 或使用HTTP代理替代SOCKS代理
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
