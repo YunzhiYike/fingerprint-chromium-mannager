@@ -65,12 +65,12 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     // 自动打开开发者工具查看调试信息
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   });
 
       // 开发模式下打开开发者工具
     if (process.argv.includes('--dev')) {
-        mainWindow.webContents.openDevTools();
+        // mainWindow.webContents.openDevTools();
     }
 
     // 窗口关闭前的处理
