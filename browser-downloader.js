@@ -100,8 +100,12 @@ class BrowserDownloader {
             const protocol = url.startsWith('https:') ? https : http;
             
             const request = protocol.get(url, (response) => {
+                console.log(`下载响应状态码: ${response.statusCode}`);
+                console.log(`响应头:`, response.headers);
+                
                 if (response.statusCode === 302 || response.statusCode === 301) {
                     // 处理重定向
+                    console.log(`重定向到: ${response.headers.location}`);
                     this.downloadFile(response.headers.location, targetPath, onProgress)
                         .then(resolve)
                         .catch(reject);
@@ -116,35 +120,57 @@ class BrowserDownloader {
                 const totalSize = parseInt(response.headers['content-length'], 10);
                 let downloadedSize = 0;
                 
+                console.log(`文件总大小: ${totalSize ? Math.round(totalSize / 1024 / 1024) + 'MB' : '未知'}`);
+                
                 const fileStream = require('fs').createWriteStream(targetPath);
+                
+                fileStream.on('error', (error) => {
+                    console.error('文件写入错误:', error);
+                    reject(error);
+                });
                 
                 response.on('data', (chunk) => {
                     downloadedSize += chunk.length;
-                    fileStream.write(chunk);
                     
-                    if (onProgress && totalSize) {
-                        const progress = Math.round((downloadedSize / totalSize) * 100);
-                        onProgress(progress, downloadedSize, totalSize);
+                    try {
+                        fileStream.write(chunk);
+                        
+                        if (onProgress) {
+                            if (totalSize) {
+                                const progress = Math.round((downloadedSize / totalSize) * 100);
+                                onProgress(progress, downloadedSize, totalSize);
+                            } else {
+                                // 如果没有总大小信息，至少显示已下载的大小
+                                onProgress(0, downloadedSize, downloadedSize);
+                            }
+                        }
+                    } catch (writeError) {
+                        fileStream.destroy();
+                        reject(writeError);
                     }
                 });
                 
                 response.on('end', () => {
-                    fileStream.end();
-                    console.log('下载完成');
-                    resolve(targetPath);
+                    console.log(`下载完成，总计下载: ${Math.round(downloadedSize / 1024 / 1024)}MB`);
+                    fileStream.end(() => {
+                        resolve(targetPath);
+                    });
                 });
                 
                 response.on('error', (error) => {
+                    console.error('下载流错误:', error);
                     fileStream.destroy();
                     reject(error);
                 });
             });
             
             request.on('error', (error) => {
+                console.error('请求错误:', error);
                 reject(error);
             });
             
             request.setTimeout(300000, () => {
+                console.error('下载超时');
                 request.destroy();
                 reject(new Error('下载超时'));
             });
@@ -191,15 +217,31 @@ class BrowserDownloader {
     // Windows EXE安装程序处理
     async installWindowsExecutable(exePath, installPath) {
         console.log('处理Windows可执行文件:', exePath);
+        console.log('安装路径:', installPath);
+        
+        // 检查下载的文件是否存在和有效
+        try {
+            const stat = await fs.stat(exePath);
+            console.log(`文件信息: 大小=${Math.round(stat.size / 1024 / 1024)}MB`);
+            
+            if (stat.size < 1024 * 1024) { // 小于1MB，可能是错误文件
+                throw new Error(`下载的文件太小(${Math.round(stat.size / 1024)}KB)，可能下载不完整`);
+            }
+        } catch (statError) {
+            throw new Error(`无法访问下载的文件: ${statError.message}`);
+        }
         
         // 检查是否是安装程序
         const fileName = path.basename(exePath).toLowerCase();
+        console.log('文件名:', fileName);
         
-        if (fileName.includes('installer')) {
+        if (fileName.includes('installer') || fileName.includes('setup')) {
             // 标准安装程序
+            console.log('检测为标准安装程序');
             return await this.runWindowsInstaller(exePath, installPath);
         } else {
             // 便携版可执行文件
+            console.log('检测为便携版或自解压文件');
             return await this.handlePortableExecutable(exePath, installPath);
         }
     }
@@ -259,39 +301,55 @@ class BrowserDownloader {
         return new Promise((resolve, reject) => {
             // 尝试多种解压方法
             const extractMethods = [
-                // 方法1: 7-zip自解压格式
-                `"${exePath}" -o"${installPath}" -y`,
-                // 方法2: 带参数的自解压
+                // 方法1: 无参数运行（很多便携版支持）
+                `cd /d "${installPath}" && "${exePath}"`,
+                // 方法2: 静默解压到指定目录
                 `"${exePath}" /S /D="${installPath}"`,
-                // 方法3: 无参数自解压到当前目录
-                `cd "${installPath}" && "${exePath}"`,
-                // 方法4: WinRAR自解压格式
-                `"${exePath}" -x "${installPath}"`
+                // 方法3: 7-zip格式
+                `"${exePath}" -o"${installPath}" -y`,
+                // 方法4: 标准安装程序格式
+                `"${exePath}" /VERYSILENT /DIR="${installPath}"`,
+                // 方法5: NSIS格式
+                `"${exePath}" /S /D="${installPath}"`,
             ];
             
             let methodIndex = 0;
             
-            const tryNextMethod = () => {
+            const tryNextMethod = async () => {
                 if (methodIndex >= extractMethods.length) {
-                    // 所有方法都失败，回退到复制单个文件
-                    console.log('所有解压方法失败，回退到单文件模式');
-                    this.copyAsingleFile(exePath, installPath)
-                        .then(resolve)
-                        .catch(reject);
+                    // 所有解压方法都失败，直接复制exe文件
+                    try {
+                        await this.copyAsingleFile(exePath, installPath);
+                        resolve(installPath);
+                    } catch (copyError) {
+                        reject(copyError);
+                    }
                     return;
                 }
                 
                 const command = extractMethods[methodIndex];
-                console.log(`尝试解压方法 ${methodIndex + 1}: ${command}`);
                 
-                exec(command, { timeout: 180000 }, (error, stdout, stderr) => {
+                exec(command, { 
+                    timeout: 180000,
+                    cwd: installPath 
+                }, async (error, stdout, stderr) => {
                     if (error) {
-                        console.log(`方法 ${methodIndex + 1} 失败:`, error.message);
                         methodIndex++;
                         tryNextMethod();
                     } else {
-                        console.log(`方法 ${methodIndex + 1} 成功`);
-                        resolve(installPath);
+                        // 检查是否有文件被解压
+                        try {
+                            const items = await fs.readdir(installPath);
+                            if (items.length > 0) {
+                                resolve(installPath);
+                            } else {
+                                methodIndex++;
+                                tryNextMethod();
+                            }
+                        } catch {
+                            methodIndex++;
+                            tryNextMethod();
+                        }
                     }
                 });
             };
@@ -306,7 +364,16 @@ class BrowserDownloader {
         const targetPath = path.join(installPath, fileName);
         
         await fs.copyFile(exePath, targetPath);
-        console.log(`单文件便携版准备完成: ${targetPath}`);
+        
+        // 如果是exe文件，尝试添加可执行权限
+        if (fileName.toLowerCase().endsWith('.exe')) {
+            try {
+                const fs_sync = require('fs');
+                fs_sync.chmodSync(targetPath, '755');
+            } catch (chmodError) {
+                // 忽略chmod错误，Windows不需要
+            }
+        }
         
         return installPath;
     }

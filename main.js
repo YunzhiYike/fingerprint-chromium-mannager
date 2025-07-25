@@ -40,7 +40,7 @@ async function getAvailableDebugPort() {
       usedPorts.add(browserInfo.debugPort);
     }
   }
-  
+
   let port = 9222; // Chrome默认调试端口
   while (usedPorts.has(port)) {
     port++;
@@ -61,7 +61,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile('index.html');
-  
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     // 自动打开开发者工具查看调试信息
@@ -79,15 +79,15 @@ function createWindow() {
         try {
             // 先阻止窗口关闭，等待清理完成
             event.preventDefault();
-            
+
             // 通知渲染进程开始清理
             mainWindow.webContents.send('app-will-quit');
-            
+
             // 等待一段时间让渲染进程处理
             setTimeout(() => {
                 // 强制关闭所有浏览器进程
                 cleanup();
-                
+
                 // 真正关闭窗口
                 mainWindow.destroy();
             }, 1000);
@@ -112,7 +112,7 @@ app.on('before-quit', async () => {
 app.on('window-all-closed', () => {
     // 清理所有浏览器进程
     cleanup();
-    
+
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -144,7 +144,7 @@ process.on('uncaughtException', (error) => {
         console.warn('网络连接错误，这通常是代理服务器的问题，应用继续运行');
         return; // 不退出应用
     }
-    
+
     // 只有在严重错误时才退出
     console.error('严重错误:', error);
     cleanup();
@@ -160,7 +160,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // 清理函数
 function cleanup() {
     console.log('开始清理浏览器进程和代理转发器...');
-    
+
     // 关闭所有追踪的浏览器进程
     for (const [configId, browserInfo] of runningBrowsers.entries()) {
         try {
@@ -168,13 +168,13 @@ function cleanup() {
             if (browserInfo.proxyPort) {
                 proxyForwarder.stopForwarder(configId);
             }
-            
+
             if (browserInfo.process && !browserInfo.process.killed) {
                 console.log(`终止浏览器进程 ${browserInfo.pid} (${browserInfo.configName})`);
-                
+
                 // 尝试优雅关闭
                 browserInfo.process.kill('SIGTERM');
-                
+
                 // 如果进程没有在 3 秒内关闭，强制终止
                 setTimeout(() => {
                     if (!browserInfo.process.killed) {
@@ -186,13 +186,13 @@ function cleanup() {
             console.error(`关闭浏览器进程失败:`, error);
         }
     }
-    
+
     // 停止所有代理转发器
     proxyForwarder.stopAllForwarders();
-    
+
     // 清空进程列表
     runningBrowsers.clear();
-    
+
     console.log('浏览器进程和代理转发器清理完成');
 }
 
@@ -223,12 +223,12 @@ ipcMain.handle('launch-browser', async (event, config) => {
     }
 
     const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
-    
+
     const child = spawn(appSettings.chromiumPath, args, {
       detached: true,
       stdio: 'ignore'
     });
-    
+
     // 记录进程信息
     runningBrowsers.set(config.id, {
       pid: child.pid,
@@ -262,14 +262,14 @@ ipcMain.handle('launch-browser', async (event, config) => {
         mainWindow.webContents.send('browser-process-updated');
       }
     });
-    
+
     child.unref();
-    
+
     // 通知渲染进程更新状态
     if (mainWindow) {
       mainWindow.webContents.send('browser-process-updated');
     }
-    
+
     return { success: true, pid: child.pid, debugPort: debugPort };
   } catch (error) {
     return { success: false, error: error.message };
@@ -333,18 +333,18 @@ ipcMain.handle('terminate-browser', async (event, configId) => {
     if (browserInfo.proxyPort) {
       proxyForwarder.stopForwarder(configId);
     }
-    
+
     // 终止进程
     process.kill(browserInfo.pid, 'SIGTERM');
-    
+
     // 从映射中移除
     runningBrowsers.delete(configId);
-    
+
     // 通知渲染进程更新状态
     if (mainWindow) {
       mainWindow.webContents.send('browser-process-updated');
     }
-    
+
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -369,7 +369,7 @@ ipcMain.handle('show-root-folder-dialog', async () => {
       properties: ['openDirectory', 'createDirectory'],
       defaultPath: path.join(os.homedir(), 'Documents')
     });
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       return { success: true, path: result.filePaths[0] };
     } else {
@@ -385,10 +385,10 @@ ipcMain.handle('create-user-data-dir', async (event, rootPath, randomFolder) => 
     const defaultRoot = appSettings.defaultUserDataRoot;
     const actualRoot = rootPath || defaultRoot;
     const fullPath = path.join(actualRoot, randomFolder);
-    
+
     // 创建目录（递归创建，如果不存在的话）
     await fs.mkdir(fullPath, { recursive: true });
-    
+
     return { success: true, path: fullPath };
   } catch (error) {
     return { success: false, error: error.message };
@@ -402,27 +402,27 @@ ipcMain.handle('start-all-browsers', async () => {
         const data = await fs.readFile(CONFIG_FILE, 'utf8');
         const configs = JSON.parse(data);
         const results = [];
-        
+
         console.log('准备启动配置数量:', configs.length);
-        
+
         for (const config of configs) {
             // 检查是否已经在运行
             const isRunning = runningBrowsers.has(config.id);
             console.log(`配置 ${config.name} (${config.id}) 是否已运行:`, isRunning);
-            
+
             if (!isRunning) {
                 try {
                     // 构建启动参数
                     const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
                     console.log(`配置 ${config.name} 启动参数:`, args.join(' '));
-                    
+
                     const child = spawn(appSettings.chromiumPath, args, {
                         detached: true,
                         stdio: 'ignore'
                     });
-                    
+
                     console.log(`配置 ${config.name} 启动成功，PID:`, child.pid);
-                    
+
                     // 记录进程信息
                     runningBrowsers.set(config.id, {
                         pid: child.pid,
@@ -456,9 +456,9 @@ ipcMain.handle('start-all-browsers', async () => {
                             mainWindow.webContents.send('browser-process-updated');
                         }
                     });
-                    
+
                     child.unref();
-                    
+
                     results.push({ configId: config.id, success: true, pid: child.pid });
                 } catch (error) {
                     console.error(`启动配置 ${config.name} 失败:`, error);
@@ -468,12 +468,12 @@ ipcMain.handle('start-all-browsers', async () => {
                 results.push({ configId: config.id, success: false, error: '已在运行中' });
             }
         }
-        
+
         // 通知渲染进程更新状态
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('browser-process-updated');
         }
-        
+
         const finalResult = { success: true, results };
         console.log('返回最终结果:', finalResult);
         return finalResult;
@@ -486,17 +486,17 @@ ipcMain.handle('start-all-browsers', async () => {
 ipcMain.handle('stop-all-browsers', async () => {
     try {
         const results = [];
-        
+
         // 复制数组，因为在终止过程中数组会被修改
         const browsersToStop = Array.from(runningBrowsers.entries());
-        
+
         for (const [configId, browserInfo] of browsersToStop) {
             try {
                 // 停止相关的代理转发器
                 if (browserInfo.proxyPort) {
                     proxyForwarder.stopForwarder(configId);
                 }
-                
+
                 if (browserInfo.process && !browserInfo.process.killed) {
                     browserInfo.process.kill('SIGTERM');
                     results.push({ configId, success: true });
@@ -507,15 +507,15 @@ ipcMain.handle('stop-all-browsers', async () => {
                 results.push({ configId, success: false, error: error.message });
             }
         }
-        
+
         // 清空运行列表
         runningBrowsers.clear();
-        
+
         // 通知渲染进程更新状态
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('browser-process-updated');
         }
-        
+
         return { success: true, results };
     } catch (error) {
         return { success: false, error: error.message };
@@ -524,51 +524,51 @@ ipcMain.handle('stop-all-browsers', async () => {
 
 async function buildChromiumArgs(config) {
   const args = [];
-  
+
   // 基础参数
   if (config.fingerprint) {
     args.push(`--fingerprint=${config.fingerprint}`);
   }
-  
+
   if (config.platform) {
     args.push(`--fingerprint-platform=${config.platform}`);
   }
-  
+
   if (config.platformVersion) {
     args.push(`--fingerprint-platform-version=${config.platformVersion}`);
   }
-  
+
   if (config.brand) {
     args.push(`--fingerprint-brand=${config.brand}`);
   }
-  
+
   if (config.brandVersion) {
     args.push(`--fingerprint-brand-version=${config.brandVersion}`);
   }
-  
+
   if (config.hardwareConcurrency) {
     args.push(`--fingerprint-hardware-concurrency=${config.hardwareConcurrency}`);
   }
-  
+
   if (config.disableNonProxiedUdp) {
     args.push('--disable-non-proxied-udp');
   }
-  
+
   if (config.language) {
     args.push(`--lang=${config.language}`);
   }
-  
+
   if (config.acceptLanguage) {
     args.push(`--accept-lang=${config.acceptLanguage}`);
   }
-  
+
   if (config.timezone) {
     console.log('timezone', config.timezone);
     args.push(`--timezone="${config.timezone}"`);
   }
-  
+
   let proxyPort = null;
-  
+
   if (config.proxyServer) {
     // 如果有认证信息，使用代理转发器
     if (config.proxyUsername && config.proxyPassword) {
@@ -595,23 +595,23 @@ async function buildChromiumArgs(config) {
       console.log('✅ 代理配置 (无认证):', config.proxyServer);
     }
   }
-  
+
   // 其他有用的参数
   args.push('--no-first-run');
   args.push('--no-default-browser-check');
-  
+
   // 启用远程调试端口 (为批量任务功能)
   const debugPort = await getAvailableDebugPort();
   args.push(`--remote-debugging-port=${debugPort}`);
 
-  
+
   // 处理用户数据目录
   try {
     const defaultRoot = appSettings.defaultUserDataRoot;
     const rootPath = config.userDataRoot || defaultRoot;
     const randomFolder = config.randomFolder || `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     const userDataDir = path.join(rootPath, randomFolder);
-    
+
     // 确保目录存在
     await fs.mkdir(userDataDir, { recursive: true });
     args.push(`--user-data-dir=${userDataDir}`);
@@ -621,7 +621,7 @@ async function buildChromiumArgs(config) {
     const tempDir = path.join(os.tmpdir(), 'chromium-' + Date.now());
     args.push(`--user-data-dir=${tempDir}`);
   }
-  
+
   return { args, debugPort, proxyPort };
 }
 
@@ -680,7 +680,7 @@ ipcMain.handle('reset-app-settings', async () => {
 ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task }) => {
   try {
     const http = require('http');
-    
+
     // 获取可用的tab列表
     const tabsData = await new Promise((resolve, reject) => {
       const req = http.get(`http://localhost:${debugPort}/json`, (res) => {
@@ -694,44 +694,44 @@ ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task
           }
         });
       });
-      
+
       req.on('error', reject);
       req.setTimeout(5000, () => {
         req.abort();
         reject(new Error('连接调试端口超时'));
       });
     });
-    
+
     // 找到第一个可用的页面tab
     const tab = tabsData.find(t => t.type === 'page');
     if (!tab) {
       return { success: false, error: '没有找到可用的页面标签' };
     }
-    
+
     // 通过WebSocket连接到调试端口
     const WebSocket = require('ws');
     const ws = new WebSocket(tab.webSocketDebuggerUrl);
-    
+
     return new Promise((resolve) => {
       let commandId = 1;
       const pendingCommands = new Map();
-      
+
       ws.on('open', async () => {
         try {
           // 启用Runtime和Page域
           await sendCommand('Runtime.enable');
           await sendCommand('Page.enable');
-          
+
           // 根据任务类型执行相应操作
           if (task.type === 'navigate' || task.type === 'combined') {
             await sendCommand('Page.navigate', { url: task.url });
-            
+
             if (task.waitForLoad) {
               // 等待页面加载完成
               await waitForPageLoad();
             }
           }
-          
+
           if (task.type === 'script' || task.type === 'combined') {
             // 执行JavaScript脚本
             const scriptResult = await sendCommand('Runtime.evaluate', {
@@ -739,28 +739,28 @@ ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task
               awaitPromise: true,
               returnByValue: true
             });
-            
+
             if (scriptResult.exceptionDetails) {
               throw new Error(`脚本执行错误: ${scriptResult.exceptionDetails.text}`);
             }
           }
-          
+
           ws.close();
           resolve({ success: true });
-          
+
         } catch (error) {
           ws.close();
           resolve({ success: false, error: error.message });
         }
       });
-      
+
       ws.on('message', (data) => {
         const message = JSON.parse(data);
-        
+
         if (message.id && pendingCommands.has(message.id)) {
           const { resolve, reject } = pendingCommands.get(message.id);
           pendingCommands.delete(message.id);
-          
+
           if (message.error) {
             reject(new Error(message.error.message));
           } else {
@@ -768,22 +768,22 @@ ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task
           }
         }
       });
-      
+
       ws.on('error', (error) => {
         resolve({ success: false, error: `WebSocket连接错误: ${error.message}` });
       });
-      
+
       function sendCommand(method, params = {}) {
         return new Promise((resolve, reject) => {
           const id = commandId++;
           pendingCommands.set(id, { resolve, reject });
-          
+
           ws.send(JSON.stringify({
             id,
             method,
             params
           }));
-          
+
           // 设置超时
           setTimeout(() => {
             if (pendingCommands.has(id)) {
@@ -793,14 +793,14 @@ ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task
           }, 10000);
         });
       }
-      
+
       function waitForPageLoad() {
         return new Promise((resolve) => {
           const originalOnMessage = ws.onmessage;
-          
+
           ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            
+
             if (message.method === 'Page.loadEventFired') {
               ws.onmessage = originalOnMessage;
               resolve();
@@ -808,13 +808,13 @@ ipcMain.handle('execute-browser-task', async (event, { configId, debugPort, task
               originalOnMessage(event);
             }
           };
-          
+
           // 如果5秒内没有收到加载完成事件，继续执行
           setTimeout(resolve, 5000);
         });
       }
     });
-    
+
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -832,15 +832,15 @@ ipcMain.handle('browse-chromium-path', async () => {
             ],
             defaultPath: '/Applications/'
         });
-        
+
         if (!result.canceled && result.filePaths.length > 0) {
             let selectedPath = result.filePaths[0];
-            
+
             // 如果选择的是 .app 文件，自动拼接到可执行文件路径
             if (selectedPath.endsWith('.app')) {
                 selectedPath = path.join(selectedPath, 'Contents/MacOS/Chromium');
             }
-            
+
             return { success: true, path: selectedPath };
         } else {
             return { success: false, canceled: true };
@@ -856,7 +856,7 @@ ipcMain.handle('get-browser-download-info', async () => {
         const platform = browserDownloader.detectPlatform();
         const defaultPath = browserDownloader.getDefaultInstallPath();
         const latestVersion = await browserDownloader.getLatestVersion();
-        
+
         return {
             success: true,
             platform: platform,
@@ -873,24 +873,31 @@ ipcMain.handle('download-install-browser', async (event, installPath) => {
     try {
         // 发送进度更新
         const onProgress = (progress, downloaded, total) => {
-            mainWindow.webContents.send('browser-download-progress', {
-                progress: progress,
-                downloaded: downloaded,
-                total: total
-            });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('browser-download-progress', {
+                    progress: progress,
+                    downloaded: downloaded,
+                    total: total
+                });
+            }
         };
-        
+
+        // 立即发送开始下载的消息
+        onProgress(0, 0, 0);
+
         const result = await browserDownloader.downloadAndInstall(installPath, onProgress);
-        
+
         if (result.success) {
             // 自动更新应用设置中的浏览器路径
             appSettings.chromiumPath = result.executablePath;
             await saveAppSettings();
-            
+
             // 通知前端更新
-            mainWindow.webContents.send('browser-install-complete', result);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('browser-install-complete', result);
+            }
         }
-        
+
         return result;
     } catch (error) {
         return { success: false, error: error.message };
@@ -901,16 +908,16 @@ ipcMain.handle('check-browser-installation', async () => {
     try {
         const defaultPath = browserDownloader.getDefaultInstallPath();
         console.log('检查浏览器安装状态，默认路径:', defaultPath);
-        
+
         // 先检查默认安装路径是否存在
         try {
             const fs = require('fs').promises;
             await fs.access(defaultPath);
             console.log('默认安装路径存在，开始查找可执行文件...');
-            
+
             // 检查默认安装路径是否存在浏览器
             const executablePath = await browserDownloader.findBrowserExecutable(defaultPath);
-            
+
             if (executablePath) {
                 console.log('找到已安装的浏览器:', executablePath);
                 return {
