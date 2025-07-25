@@ -248,19 +248,46 @@ class BrowserDownloader {
 
     // 运行Windows安装程序
     async runWindowsInstaller(exePath, installPath) {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             const command = `"${exePath}" /S /D="${installPath}"`;
             console.log('运行Windows安装程序:', command);
             
-            exec(command, { timeout: 300000 }, (error, stdout, stderr) => {
+            exec(command, { timeout: 300000 }, async (error, stdout, stderr) => {
                 if (error) {
                     console.warn('安装程序安装失败，尝试便携版处理:', error.message);
-                    this.handlePortableExecutable(exePath, installPath)
-                        .then(resolve)
-                        .catch(reject);
+                    try {
+                        const result = await this.handlePortableExecutable(exePath, installPath);
+                        resolve(result);
+                    } catch (portableError) {
+                        reject(portableError);
+                    }
                 } else {
-                    console.log('Windows安装完成');
-                    resolve(installPath);
+                    console.log('Windows安装程序执行完成，检查实际安装路径...');
+                    
+                    // 检查指定路径是否有浏览器文件
+                    const executableInTargetPath = await this.findBrowserExecutable(installPath);
+                    if (executableInTargetPath) {
+                        console.log('✅ 浏览器已安装到指定路径:', executableInTargetPath);
+                        resolve(installPath);
+                        return;
+                    }
+                    
+                    console.log('指定路径未找到浏览器，搜索常见安装位置...');
+                    
+                    // 如果指定路径没有安装成功，检查常见的Windows安装路径
+                    const actualInstallPath = await this.findWindowsInstallPath();
+                    if (actualInstallPath) {
+                        console.log('✅ 在系统路径找到浏览器:', actualInstallPath);
+                        resolve(actualInstallPath);
+                    } else {
+                        console.log('未找到浏览器安装，尝试便携版处理...');
+                        try {
+                            const result = await this.handlePortableExecutable(exePath, installPath);
+                            resolve(result);
+                        } catch (portableError) {
+                            reject(new Error('安装失败：未找到已安装的浏览器'));
+                        }
+                    }
                 }
             });
         });
@@ -376,6 +403,144 @@ class BrowserDownloader {
         }
         
         return installPath;
+    }
+
+    // 查找Windows系统中的浏览器安装路径
+    async findWindowsInstallPath() {
+        console.log('🔍 开始搜索Windows系统中的浏览器安装路径...');
+        
+        // Windows常见的浏览器安装路径
+        const commonPaths = [
+            // 用户级安装路径
+            path.join(os.homedir(), 'AppData', 'Local', 'Chromium'),
+            path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome'),
+            path.join(os.homedir(), 'AppData', 'Local', 'ungoogled-chromium'),
+            path.join(os.homedir(), 'AppData', 'Local', 'ChromiumManager'),
+            
+            // 系统级安装路径  
+            'C:\\Program Files\\Google\\Chrome',
+            'C:\\Program Files (x86)\\Google\\Chrome',
+            'C:\\Program Files\\Chromium',
+            'C:\\Program Files (x86)\\Chromium',
+            'C:\\Program Files\\ungoogled-chromium',
+            'C:\\Program Files (x86)\\ungoogled-chromium',
+            
+            // 其他可能的路径
+            path.join(os.homedir(), 'AppData', 'Roaming', 'Chromium'),
+            'C:\\Users\\Public\\Chromium',
+            'C:\\Chromium',
+            
+            // 检查桌面和下载文件夹
+            path.join(os.homedir(), 'Desktop'),
+            path.join(os.homedir(), 'Downloads')
+        ];
+        
+        console.log(`📋 将检查 ${commonPaths.length} 个可能的安装路径`);
+        
+        for (const searchPath of commonPaths) {
+            console.log(`📁 检查路径: ${searchPath}`);
+            
+            try {
+                // 检查路径是否存在
+                await fs.access(searchPath);
+                console.log(`✅ 路径存在: ${searchPath}`);
+                
+                // 在此路径中查找浏览器可执行文件
+                const executablePath = await this.findBrowserExecutable(searchPath);
+                if (executablePath) {
+                    console.log(`🎯 找到浏览器可执行文件: ${executablePath}`);
+                    
+                    // 返回包含可执行文件的目录路径
+                    const installPath = path.dirname(executablePath);
+                    console.log(`📍 确定安装路径: ${installPath}`);
+                    return installPath;
+                }
+                
+            } catch (error) {
+                console.log(`❌ 路径不存在或无法访问: ${searchPath}`);
+                continue;
+            }
+        }
+        
+        console.log('😞 在所有常见路径中都未找到浏览器');
+        
+        // 最后尝试：使用Windows注册表查找
+        try {
+            console.log('🔍 尝试从Windows注册表查找浏览器...');
+            const registryPath = await this.findBrowserFromRegistry();
+            if (registryPath) {
+                console.log(`📍 从注册表找到浏览器: ${registryPath}`);
+                return path.dirname(registryPath);
+            }
+        } catch (registryError) {
+            console.log('❌ 注册表查找失败:', registryError.message);
+        }
+        
+        return null;
+    }
+
+    // 从Windows注册表查找浏览器
+    async findBrowserFromRegistry() {
+        return new Promise((resolve) => {
+            // 检查常见的注册表路径
+            const registryCommands = [
+                // Chrome注册表路径
+                'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve',
+                'reg query "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve',
+                
+                // Chromium注册表路径
+                'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chromium.exe" /ve',
+                'reg query "HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chromium.exe" /ve',
+                
+                // 其他可能的路径
+                'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Chromium"',
+                'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall" /s /f "Chrome"'
+            ];
+            
+            let commandIndex = 0;
+            
+            const tryNextCommand = () => {
+                if (commandIndex >= registryCommands.length) {
+                    resolve(null);
+                    return;
+                }
+                
+                const command = registryCommands[commandIndex];
+                console.log(`🔍 执行注册表查询: ${command}`);
+                
+                exec(command, (error, stdout, stderr) => {
+                    if (!error && stdout) {
+                        console.log(`📋 注册表输出: ${stdout}`);
+                        
+                        // 解析注册表输出，查找可执行文件路径
+                        const lines = stdout.split('\n');
+                        for (const line of lines) {
+                            const match = line.match(/([C-Z]:\\[^\\]+.*?\.exe)/i);
+                            if (match) {
+                                const exePath = match[1].trim();
+                                console.log(`🎯 从注册表找到可执行文件: ${exePath}`);
+                                
+                                // 验证文件是否存在
+                                require('fs').access(exePath, (accessError) => {
+                                    if (!accessError) {
+                                        resolve(exePath);
+                                    } else {
+                                        commandIndex++;
+                                        tryNextCommand();
+                                    }
+                                });
+                                return;
+                            }
+                        }
+                    }
+                    
+                    commandIndex++;
+                    tryNextCommand();
+                });
+            };
+            
+            tryNextCommand();
+        });
     }
 
     // macOS DMG文件处理
@@ -579,39 +744,56 @@ class BrowserDownloader {
             
             // 处理安装文件
             const extractPath = path.join(installPath, 'installed');
-            await this.processInstallFile(downloadPath, extractPath);
+            const processResult = await this.processInstallFile(downloadPath, extractPath);
+            
+            // processResult 可能是实际的安装路径（对于Windows标准安装程序）
+            let actualInstallPath = processResult;
             
             // 查找浏览器可执行文件
-            const executablePath = await this.findBrowserExecutable(extractPath);
+            let executablePath = await this.findBrowserExecutable(actualInstallPath);
             
             if (!executablePath) {
+                console.log('🔍 在处理路径未找到可执行文件，尝试其他位置...');
+                
                 // 如果找不到，打印目录结构进行调试
-                console.log('🔍 未找到可执行文件，打印安装目录结构：');
-                await this.printDirectoryStructure(extractPath);
+                console.log('🔍 打印安装目录结构：');
+                await this.printDirectoryStructure(actualInstallPath);
                 
                 // 尝试在上级目录查找
-                const parentPath = path.dirname(extractPath);
+                const parentPath = path.dirname(actualInstallPath);
                 console.log('🔍 尝试在上级目录查找...');
                 const parentExecutable = await this.findBrowserExecutable(parentPath);
                 
                 if (parentExecutable) {
                     console.log(`✅ 在上级目录找到可执行文件: ${parentExecutable}`);
-                    return {
-                        success: true,
-                        executablePath: parentExecutable,
-                        installPath: parentPath
-                    };
+                    executablePath = parentExecutable;
+                    actualInstallPath = path.dirname(parentExecutable);
+                } else if (platform === 'windows') {
+                    // 对于Windows，尝试在系统路径查找
+                    console.log('🔍 尝试在Windows系统路径查找...');
+                    const systemInstallPath = await this.findWindowsInstallPath();
+                    if (systemInstallPath) {
+                        const systemExecutable = await this.findBrowserExecutable(systemInstallPath);
+                        if (systemExecutable) {
+                            console.log(`✅ 在系统路径找到可执行文件: ${systemExecutable}`);
+                            executablePath = systemExecutable;
+                            actualInstallPath = systemInstallPath;
+                        }
+                    }
                 }
                 
-                throw new Error('安装完成但未找到浏览器可执行文件');
+                if (!executablePath) {
+                    throw new Error('安装完成但未找到浏览器可执行文件');
+                }
             }
             
-            console.log(`浏览器安装成功: ${executablePath}`);
+            console.log(`✅ 浏览器安装成功: ${executablePath}`);
+            console.log(`📍 实际安装路径: ${actualInstallPath}`);
             
             return {
                 success: true,
                 executablePath,
-                installPath: extractPath
+                installPath: actualInstallPath
             };
             
         } catch (error) {
@@ -883,29 +1065,57 @@ class BrowserDownloader {
     // 检查是否已安装
     async checkInstallation(installPath = null) {
         const searchPath = installPath || this.getDefaultInstallPath();
+        const { platform } = this.detectPlatform();
         
         console.log(`检查安装状态，搜索路径: ${searchPath}`);
         
         try {
-            // 先检查路径是否存在
+            // 先检查指定路径是否存在并有浏览器
             await fs.access(searchPath);
             console.log('安装路径存在，开始查找可执行文件...');
             
-            const executablePath = await this.findBrowserExecutable(searchPath);
-            return {
-                installed: !!executablePath,
-                executablePath,
-                installPath: searchPath
-            };
+            let executablePath = await this.findBrowserExecutable(searchPath);
+            let actualInstallPath = searchPath;
+            
+            if (executablePath) {
+                return {
+                    installed: true,
+                    executablePath,
+                    installPath: actualInstallPath
+                };
+            }
+            
+            console.log('指定路径未找到浏览器，继续检查其他位置...');
+            
         } catch (pathError) {
-            console.log(`安装路径不存在或无法访问: ${pathError.message}`);
-            return {
-                installed: false,
-                executablePath: null,
-                installPath: searchPath,
-                message: '浏览器尚未安装'
-            };
+            console.log(`指定安装路径不存在或无法访问: ${pathError.message}`);
         }
+        
+        // 如果指定路径没有找到，对于Windows系统检查常见安装位置
+        if (platform === 'windows') {
+            console.log('🔍 检查Windows系统中的常见浏览器安装位置...');
+            
+            const systemInstallPath = await this.findWindowsInstallPath();
+            if (systemInstallPath) {
+                const systemExecutable = await this.findBrowserExecutable(systemInstallPath);
+                if (systemExecutable) {
+                    console.log(`✅ 在系统路径找到已安装的浏览器: ${systemExecutable}`);
+                    return {
+                        installed: true,
+                        executablePath: systemExecutable,
+                        installPath: systemInstallPath,
+                        message: '在系统路径找到已安装的浏览器'
+                    };
+                }
+            }
+        }
+        
+        return {
+            installed: false,
+            executablePath: null,
+            installPath: searchPath,
+            message: '浏览器尚未安装'
+        };
     }
 }
 
