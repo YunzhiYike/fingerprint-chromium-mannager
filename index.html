@@ -425,22 +425,22 @@
                                 <i class="fas fa-tasks"></i>
                                 批量任务管理
                             </h3>
-                            <span class="task-subtitle">自动化浏览器操作</span>
+                            <span class="task-subtitle">自动化浏览器操作与远程集群控制</span>
                         </div>
                         <div class="task-actions">
-                            <button id="addTaskBtn" class="el-button el-button--primary el-button--round">
+                            <button id="addTaskBtn" class="header-btn primary">
                                 <i class="fas fa-plus"></i>
                                 <span>新建任务</span>
                             </button>
-                            <button id="executeTaskBtn" class="el-button el-button--success el-button--round">
+                            <button id="executeTaskBtn" class="header-btn success">
                                 <i class="fas fa-play"></i>
                                 <span>执行任务</span>
                             </button>
-                            <button id="stopTaskBtn" class="el-button el-button--danger el-button--round" disabled>
+                            <button id="stopTaskBtn" class="header-btn danger" disabled>
                                 <i class="fas fa-stop"></i>
                                 <span>停止任务</span>
                             </button>
-                            <button id="closeBatchTaskBtn" class="el-button el-button--default">
+                            <button id="closeBatchTaskBtn" class="header-btn default">
                                 <i class="fas fa-times"></i>
                                 <span>关闭</span>
                             </button>
@@ -448,77 +448,187 @@
                     </div>
 
                     <div class="batch-task-content">
-                        <div class="el-row">
-                            <div class="el-col el-col-8">
-                                <div class="el-card">
-                                    <div class="el-card__header">
-                                        <span class="section-title">
+                        <!-- 顶部控制面板 -->
+                        <div class="control-panel">
+                            <div class="control-section">
+                                <div class="section-header">
+                                    <h4 class="section-title">
+                                        <i class="fas fa-th-large"></i>
+                                        窗口布局控制
+                                    </h4>
+                                </div>
+                                <div class="control-buttons">
+                                    <button id="tileWindowsBtn" class="action-btn primary" title="将所有打开的浏览器窗口进行平铺排列">
+                                        <i class="fas fa-th"></i>
+                                        <span>平铺全部</span>
+                                    </button>
+                                    <button id="cascadeWindowsBtn" class="action-btn primary" title="将所有打开的浏览器窗口进行重叠排列">
+                                        <i class="fas fa-layer-group"></i>
+                                        <span>重叠全部</span>
+                                    </button>
+                                    <button id="restoreWindowsBtn" class="action-btn secondary" title="还原所有浏览器窗口到默认大小">
+                                        <i class="fas fa-expand"></i>
+                                        <span>还原全部</span>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="control-section">
+                                <div class="section-header">
+                                    <h4 class="section-title">
+                                        <i class="fas fa-sync"></i>
+                                        操作同步控制
+                                    </h4>
+                                </div>
+                                <div class="sync-control-group">
+                                    <div class="sync-enable">
+                                        <label class="sync-switch">
+                                            <input type="checkbox" id="enableSync" class="sync-checkbox">
+                                            <span class="sync-toggle"></span>
+                                            <span class="sync-label">启用远程同步</span>
+                                        </label>
+                                    </div>
+                                    <div class="sync-enable">
+                                        <label class="sync-switch">
+                                            <input type="checkbox" id="enableBrowserUI" class="sync-checkbox" checked>
+                                            <span class="sync-toggle"></span>
+                                            <span class="sync-label">浏览器UI控制</span>
+                                        </label>
+                                    </div>
+                                    <div class="sync-mode-selector">
+                                        <label class="sync-mode-label">同步模式:</label>
+                                        <select id="syncModeSelect" class="sync-mode-select">
+                                            <option value="ultimate">混合事件控制 (推荐)</option>
+                                            <option value="native">原生句柄控制 (高级)</option>
+                                        </select>
+                                        <div class="sync-mode-help">
+                                            <span id="syncModeDescription" class="sync-mode-description">
+                                                网页内容 + 浏览器UI混合控制，适合大多数场景
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="sync-buttons">
+                                        <button id="syncNowBtn" class="action-btn warning" disabled>
+                                            <i class="fas fa-sync-alt"></i>
+                                            <span>立即同步</span>
+                                        </button>
+                                        <button id="syncWindowSizesBtn" class="action-btn success">
+                                            <i class="fas fa-expand-arrows-alt"></i>
+                                            <span>同步窗口大小</span>
+                                        </button>
+                                        <button id="debugSyncBtn" class="action-btn info">
+                                            <i class="fas fa-bug"></i>
+                                            <span>调试同步</span>
+                                        </button>
+                                        <button id="refreshWindowInfoBtn" class="action-btn secondary">
+                                            <i class="fas fa-refresh"></i>
+                                            <span>刷新窗口信息</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="control-section">
+                                <div class="section-header">
+                                    <h4 class="section-title">
+                                        <i class="fas fa-mouse-pointer"></i>
+                                        主控浏览器
+                                    </h4>
+                                </div>
+                                <div class="master-browser-select">
+                                    <select id="masterBrowser" class="master-select">
+                                        <option value="">选择主控浏览器</option>
+                                    </select>
+                                    <div class="master-status">
+                                        <span class="status-indicator"></span>
+                                        <span class="status-text">未选择</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 主要内容区域 -->
+                        <div class="main-content">
+                            <div class="content-left">
+                                <div class="browser-panel">
+                                    <div class="panel-header">
+                                        <h4 class="panel-title">
                                             <i class="fas fa-globe"></i>
                                             运行中的浏览器
-                                        </span>
+                                            <span class="browser-count">0</span>
+                                        </h4>
                                     </div>
-                                    <div class="el-card__body">
-                                        <div id="runningBrowsersList" class="running-browsers-list">
+                                    <div class="panel-body">
+                                        <div id="runningBrowsersList" class="browsers-list">
                                             <!-- 运行中的浏览器列表 -->
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="el-col el-col-16">
-                                <div class="el-card">
-                                    <div class="el-card__header">
-                                        <span class="section-title">
+                            
+                            <div class="content-right">
+                                <div class="task-panel">
+                                    <div class="panel-header">
+                                        <h4 class="panel-title">
                                             <i class="fas fa-code"></i>
                                             任务配置
-                                        </span>
+                                        </h4>
                                     </div>
-                                    <div class="el-card__body">
-                                        <div class="el-form">
-                                            <div class="el-form-item">
-                                                <label class="el-form-item__label">任务名称:</label>
-                                                <input type="text" id="taskName" class="el-input__inner" placeholder="输入任务名称">
+                                    <div class="panel-body">
+                                        <div class="task-form">
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label class="form-label">任务名称</label>
+                                                    <input type="text" id="taskName" class="form-input" placeholder="输入任务名称">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">任务类型</label>
+                                                    <select id="taskType" class="form-select">
+                                                        <option value="navigate">页面跳转</option>
+                                                        <option value="script">执行脚本</option>
+                                                        <option value="combined">组合任务</option>
+                                                    </select>
+                                                </div>
                                             </div>
                                             
-                                            <div class="el-form-item">
-                                                <label class="el-form-item__label">任务类型:</label>
-                                                <select id="taskType" class="el-select el-input__inner">
-                                                    <option value="navigate">页面跳转</option>
-                                                    <option value="script">执行脚本</option>
-                                                    <option value="combined">组合任务</option>
-                                                </select>
+                                            <div class="form-row" id="urlSection">
+                                                <div class="form-group full-width">
+                                                    <label class="form-label">目标网址</label>
+                                                    <input type="url" id="targetUrl" class="form-input" placeholder="https://example.com">
+                                                </div>
                                             </div>
                                             
-                                            <div class="el-form-item" id="urlSection">
-                                                <label class="el-form-item__label">目标网址:</label>
-                                                <input type="url" id="targetUrl" class="el-input__inner" placeholder="https://example.com">
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label class="form-label">延迟时间 (秒)</label>
+                                                    <input type="number" id="taskDelay" class="form-input" value="2" min="0" max="60" placeholder="执行间隔">
+                                                </div>
                                             </div>
                                             
-                                            <div class="el-form-item" id="delaySection">
-                                                <label class="el-form-item__label">延迟时间 (秒):</label>
-                                                <input type="number" id="taskDelay" class="el-input__inner" value="2" min="0" max="60" placeholder="执行间隔">
-                                            </div>
-                                            
-                                            <div class="el-form-item" id="scriptSection">
-                                                <label class="el-form-item__label">JavaScript 脚本:</label>
-                                                <textarea id="taskScript" class="el-textarea__inner" rows="8" placeholder="// 输入要执行的JavaScript代码
+                                            <div class="form-row" id="scriptSection">
+                                                <div class="form-group full-width">
+                                                    <label class="form-label">JavaScript 脚本</label>
+                                                    <textarea id="taskScript" class="form-textarea" rows="8" placeholder="// 输入要执行的JavaScript代码
 // 例如：
 // document.title = '新标题';
 // document.querySelector('#login').click();
 // console.log('任务执行完成');"></textarea>
+                                                </div>
                                             </div>
                                             
-                                            <div class="el-form-item">
-                                                <label class="el-form-item__checkbox">
-                                                    <input type="checkbox" id="waitForLoad" class="el-checkbox__input" checked>
-                                                    <span class="el-checkbox__label">等待页面加载完成</span>
-                                                </label>
-                                            </div>
-                                            
-                                            <div class="el-form-item">
-                                                <label class="el-form-item__checkbox">
-                                                    <input type="checkbox" id="parallelExecution" class="el-checkbox__input">
-                                                    <span class="el-checkbox__label">并行执行 (同时在所有浏览器中执行)</span>
-                                                </label>
+                                            <div class="form-row">
+                                                <div class="form-options">
+                                                    <label class="form-checkbox">
+                                                        <input type="checkbox" id="waitForLoad" checked>
+                                                        <span class="checkbox-mark"></span>
+                                                        <span class="checkbox-label">等待页面加载完成</span>
+                                                    </label>
+                                                    <label class="form-checkbox">
+                                                        <input type="checkbox" id="parallelExecution">
+                                                        <span class="checkbox-mark"></span>
+                                                        <span class="checkbox-label">并行执行 (同时在所有浏览器中执行)</span>
+                                                    </label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

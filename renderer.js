@@ -662,6 +662,71 @@ class BrowserConfigManager {
         }, 3000);
     }
 
+    // 添加任务日志
+    addTaskLog(level, message) {
+        const taskLog = document.getElementById('taskLog');
+        if (!taskLog) {
+            // 如果没有taskLog元素，则使用showStatus
+            this.showStatus(message, level);
+            return;
+        }
+
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${level}`;
+        
+        let icon = '';
+        let color = '';
+        
+        switch (level) {
+            case 'error':
+                icon = '❌';
+                color = '#dc3545';
+                break;
+            case 'success':
+                icon = '✅';
+                color = '#28a745';
+                break;
+            case 'warning':
+                icon = '⚠️';
+                color = '#ffc107';
+                break;
+            case 'info':
+            default:
+                icon = '📋';
+                color = '#17a2b8';
+                break;
+        }
+        
+        logEntry.innerHTML = `
+            <span class="log-timestamp">[${timestamp}]</span>
+            <span class="log-icon" style="color: ${color}">${icon}</span>
+            <span class="log-message">${message}</span>
+        `;
+        
+        taskLog.appendChild(logEntry);
+        
+        // 自动滚动到底部
+        taskLog.scrollTop = taskLog.scrollHeight;
+        
+        // 限制日志条数，超过100条时删除旧的日志
+        const logEntries = taskLog.querySelectorAll('.log-entry');
+        if (logEntries.length > 100) {
+            for (let i = 0; i < logEntries.length - 100; i++) {
+                logEntries[i].remove();
+            }
+        }
+    }
+
+    // 清空任务日志
+    clearTaskLog() {
+        const taskLog = document.getElementById('taskLog');
+        if (taskLog) {
+            taskLog.innerHTML = '';
+            this.addTaskLog('info', '📝 日志已清空');
+        }
+    }
+
     async showRootFolderDialog() {
         try {
             const result = await ipcRenderer.invoke('show-root-folder-dialog');
@@ -1054,6 +1119,9 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         // 初始化任务表单
         this.initTaskForm();
         
+        // 初始化窗口同步控制
+        this.initWindowSyncControls();
+        
         // 开始定期刷新浏览器列表
         this.startBrowserListRefresh();
     }
@@ -1090,11 +1158,17 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             
             const startTime = new Date(browser.startTime).toLocaleTimeString();
             
+            // 检查是否是主控浏览器
+            const masterSelect = document.getElementById('masterBrowser');
+            const isMaster = masterSelect && masterSelect.value === browser.configId;
+            
             item.innerHTML = `
                 <div class="browser-info">
                     <div class="browser-name">
                         <i class="fas fa-globe"></i>
                         ${browser.configName}
+                        ${isMaster ? '<span class="master-badge"><i class="fas fa-crown"></i>主控</span>' : ''}
+                        ${this.syncEnabled ? '<span class="sync-indicator active"><i class="fas fa-link"></i>同步中</span>' : ''}
                     </div>
                     <div class="browser-details">
                         <span class="pid">PID: ${browser.pid}</span>
@@ -1118,6 +1192,9 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             
             listContainer.appendChild(item);
         });
+        
+        // 更新主控浏览器选择器
+        this.updateMasterBrowserSelect();
     }
 
     initTaskForm() {
@@ -1529,6 +1606,589 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
         }
         
         progressDiv.style.display = 'none';
+    }
+
+    // 窗口同步控制方法
+    initWindowSyncControls() {
+        // 窗口布局控制事件
+        const tileBtn = document.getElementById('tileWindowsBtn');
+        const cascadeBtn = document.getElementById('cascadeWindowsBtn');
+        const restoreBtn = document.getElementById('restoreWindowsBtn');
+        
+        if (tileBtn) tileBtn.addEventListener('click', () => this.arrangeWindows('tile'));
+        if (cascadeBtn) cascadeBtn.addEventListener('click', () => this.arrangeWindows('cascade'));
+        if (restoreBtn) restoreBtn.addEventListener('click', () => this.arrangeWindows('restore'));
+
+        // 同步控制事件
+        const enableSyncCheckbox = document.getElementById('enableSync');
+        const syncNowBtn = document.getElementById('syncNowBtn');
+        const masterSelect = document.getElementById('masterBrowser');
+
+        if (enableSyncCheckbox) {
+            enableSyncCheckbox.addEventListener('change', (e) => {
+                this.toggleBrowserSync(e.target.checked);
+            });
+        }
+
+        // 浏览器UI控制开关
+        const enableBrowserUICheckbox = document.getElementById('enableBrowserUI');
+        if (enableBrowserUICheckbox) {
+            enableBrowserUICheckbox.addEventListener('change', (e) => {
+                this.toggleBrowserUIMode(e.target.checked);
+            });
+        }
+
+        // 同步模式选择器
+        const syncModeSelect = document.getElementById('syncModeSelect');
+        if (syncModeSelect) {
+            syncModeSelect.addEventListener('change', (e) => {
+                this.switchSyncMode(e.target.value);
+            });
+            
+            // 加载当前同步模式
+            this.loadCurrentSyncMode();
+        }
+
+        if (syncNowBtn) {
+            syncNowBtn.addEventListener('click', () => {
+                this.syncNow();
+            });
+        }
+
+        const debugSyncBtn = document.getElementById('debugSyncBtn');
+        if (debugSyncBtn) {
+            debugSyncBtn.addEventListener('click', () => {
+                this.debugSync();
+            });
+        }
+
+        const refreshWindowInfoBtn = document.getElementById('refreshWindowInfoBtn');
+        if (refreshWindowInfoBtn) {
+            refreshWindowInfoBtn.addEventListener('click', () => {
+                this.refreshWindowInfo();
+            });
+        }
+
+        const syncWindowSizesBtn = document.getElementById('syncWindowSizesBtn');
+        if (syncWindowSizesBtn) {
+            syncWindowSizesBtn.addEventListener('click', () => {
+                this.syncWindowSizes();
+            });
+        }
+
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        if (clearLogBtn) {
+            clearLogBtn.addEventListener('click', () => {
+                this.clearTaskLog();
+            });
+        }
+
+        if (masterSelect) {
+            masterSelect.addEventListener('change', (e) => {
+                this.onMasterBrowserChange(e.target.value);
+            });
+        }
+
+        this.initSyncState();
+    }
+
+    // 窗口布局排列 - 应用于所有浏览器窗口
+    async arrangeWindows(layoutType) {
+        const layoutNames = {
+            'tile': '平铺',
+            'cascade': '重叠',
+            'restore': '还原'
+        };
+
+        this.addTaskLog(`info`, `开始${layoutNames[layoutType]}布局所有浏览器窗口...`);
+
+        try {
+            const result = await ipcRenderer.invoke('arrange-windows', {
+                configIds: [], // 不再使用选中的配置，后端会自动获取所有浏览器
+                layoutType: layoutType
+            });
+
+            if (result.success) {
+                this.addTaskLog('success', `所有浏览器窗口${result.message}`);
+                this.showStatus(`所有浏览器窗口已${layoutNames[layoutType]}`, 'success');
+                
+                // 更新布局状态显示
+                this.updateLayoutStatus(layoutType);
+            } else {
+                this.addTaskLog('error', `窗口${layoutNames[layoutType]}失败: ${result.error}`);
+                this.showStatus(`窗口${layoutNames[layoutType]}失败: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.addTaskLog('error', `窗口${layoutNames[layoutType]}出错: ${error.message}`);
+            this.showStatus(`窗口${layoutNames[layoutType]}出错: ${error.message}`, 'error');
+        }
+    }
+
+    // 切换浏览器同步
+    async toggleBrowserSync(enabled) {
+        const syncNowBtn = document.getElementById('syncNowBtn');
+        const masterSelect = document.getElementById('masterBrowser');
+
+        if (enabled) {
+            const masterConfigId = masterSelect.value;
+            
+            if (!masterConfigId) {
+                this.showStatus('请先选择主控浏览器', 'warning');
+                document.getElementById('enableSync').checked = false;
+                return;
+            }
+
+            const targetConfigIds = this.getSelectedBrowsers();
+            
+            if (targetConfigIds.length < 2) {
+                this.showStatus('至少需要2个浏览器才能启用同步', 'warning');
+                document.getElementById('enableSync').checked = false;
+                return;
+            }
+
+            this.addTaskLog('info', `启用浏览器同步，主控: ${this.getBrowserName(masterConfigId)}`);
+
+            try {
+                const result = await ipcRenderer.invoke('toggle-browser-sync', {
+                    enabled: true,
+                    masterConfigId: masterConfigId,
+                    targetConfigIds: targetConfigIds
+                });
+
+                if (result.success) {
+                    this.syncEnabled = true;
+                    this.addTaskLog('success', result.message);
+                    this.showStatus(result.message, 'success');
+                    
+                    if (syncNowBtn) syncNowBtn.disabled = false;
+                    
+                    // 更新浏览器列表显示
+                    this.updateRunningBrowsersList();
+                } else {
+                    this.addTaskLog('error', `启用同步失败: ${result.error}`);
+                    this.showStatus(`启用同步失败: ${result.error}`, 'error');
+                    document.getElementById('enableSync').checked = false;
+                }
+            } catch (error) {
+                this.addTaskLog('error', `同步功能出错: ${error.message}`);
+                this.showStatus(`同步功能出错: ${error.message}`, 'error');
+                document.getElementById('enableSync').checked = false;
+            }
+        } else {
+            this.addTaskLog('info', '禁用浏览器同步');
+
+            try {
+                const result = await ipcRenderer.invoke('toggle-browser-sync', {
+                    enabled: false
+                });
+
+                this.syncEnabled = false;
+                if (syncNowBtn) syncNowBtn.disabled = true;
+                
+                this.addTaskLog('success', result.message || '浏览器同步已禁用');
+                this.showStatus('浏览器同步已禁用', 'info');
+                
+                // 更新浏览器列表显示
+                this.updateRunningBrowsersList();
+            } catch (error) {
+                this.addTaskLog('error', `禁用同步失败: ${error.message}`);
+                this.showStatus(`禁用同步失败: ${error.message}`, 'error');
+            }
+        }
+    }
+
+    // 切换浏览器UI控制模式
+    async toggleBrowserUIMode(enabled) {
+        try {
+            const result = await ipcRenderer.invoke('toggle-browser-ui-mode', { enabled });
+            
+            if (result.success) {
+                this.addTaskLog('info', `浏览器UI控制模式: ${enabled ? '启用' : '禁用'}`);
+                this.showStatus(`浏览器UI控制模式已${enabled ? '启用' : '禁用'}`, 'success');
+                
+                if (enabled) {
+                    this.addTaskLog('info', '现在可以控制浏览器地址栏、刷新按钮、扩展等UI元素');
+                } else {
+                    this.addTaskLog('info', '仅同步网页内容，不控制浏览器UI');
+                }
+            } else {
+                this.addTaskLog('error', `UI模式切换失败: ${result.error}`);
+                this.showStatus(`UI模式切换失败: ${result.error}`, 'error');
+                document.getElementById('enableBrowserUI').checked = !enabled;
+            }
+        } catch (error) {
+            this.addTaskLog('error', `UI模式切换出错: ${error.message}`);
+            this.showStatus(`UI模式切换出错: ${error.message}`, 'error');
+            document.getElementById('enableBrowserUI').checked = !enabled;
+        }
+    }
+
+    // 切换同步模式
+    async switchSyncMode(mode) {
+        try {
+            const result = await ipcRenderer.invoke('switch-sync-mode', { mode });
+            
+            if (result.success) {
+                const modeNames = {
+                    'ultimate': '混合事件控制',
+                    'native': '原生句柄控制'
+                };
+                
+                this.addTaskLog('info', `同步模式已切换到: ${modeNames[mode]}`);
+                this.showStatus(`同步模式已切换到: ${modeNames[mode]}`, 'success');
+                this.updateSyncModeDescription(mode);
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error) {
+            console.error('切换同步模式失败:', error);
+            this.showStatus('切换同步模式失败: ' + error.message, 'error');
+            
+            // 恢复之前的选择
+            this.loadCurrentSyncMode();
+        }
+    }
+
+    // 加载当前同步模式
+    async loadCurrentSyncMode() {
+        try {
+            const result = await ipcRenderer.invoke('get-sync-mode');
+            const syncModeSelect = document.getElementById('syncModeSelect');
+            
+            if (syncModeSelect && result.mode) {
+                syncModeSelect.value = result.mode;
+                this.updateSyncModeDescription(result.mode);
+            }
+        } catch (error) {
+            console.error('加载同步模式失败:', error);
+        }
+    }
+
+    // 更新同步模式描述
+    updateSyncModeDescription(mode) {
+        const descriptionElement = document.getElementById('syncModeDescription');
+        if (descriptionElement) {
+            const descriptions = {
+                'ultimate': '网页内容 + 浏览器UI混合控制，适合大多数场景',
+                'native': '完全基于系统句柄的原生控制，精确度更高但需要系统权限'
+            };
+            
+            descriptionElement.textContent = descriptions[mode] || descriptions['ultimate'];
+        }
+    }
+
+    // 刷新浏览器窗口信息
+    async refreshWindowInfo() {
+        try {
+            this.addTaskLog('info', '正在刷新浏览器窗口信息...');
+            
+            const result = await ipcRenderer.invoke('refresh-window-info');
+            
+            if (result.success) {
+                this.addTaskLog('success', result.message);
+                this.showStatus('浏览器窗口信息已刷新', 'success');
+                
+                if (result.windowCount) {
+                    this.addTaskLog('info', `已缓存 ${result.windowCount} 个浏览器窗口信息`);
+                }
+            } else {
+                this.addTaskLog('error', `刷新窗口信息失败: ${result.error}`);
+                this.showStatus(`刷新窗口信息失败: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.addTaskLog('error', `刷新窗口信息出错: ${error.message}`);
+            this.showStatus(`刷新窗口信息出错: ${error.message}`, 'error');
+        }
+    }
+
+    // 立即同步
+    async syncNow() {
+        const masterSelect = document.getElementById('masterBrowser');
+        const masterConfigId = masterSelect.value;
+        
+        if (!masterConfigId) {
+            this.showStatus('请先选择主控浏览器', 'warning');
+            return;
+        }
+
+        const targetConfigIds = this.getSelectedBrowsers().filter(id => id !== masterConfigId);
+        
+        if (targetConfigIds.length === 0) {
+            this.showStatus('没有可同步的目标浏览器', 'warning');
+            return;
+        }
+
+        const targetUrl = document.getElementById('targetUrl').value;
+        
+        if (!targetUrl) {
+            this.showStatus('请输入要同步的网址', 'warning');
+            return;
+        }
+
+        this.addTaskLog('info', `立即同步到: ${targetUrl}`);
+
+        try {
+            const result = await ipcRenderer.invoke('sync-browser-action', {
+                masterConfigId: masterConfigId,
+                targetConfigIds: targetConfigIds,
+                action: {
+                    type: 'navigate',
+                    url: targetUrl
+                }
+            });
+
+            if (result.success) {
+                this.addTaskLog('success', result.message);
+                this.showStatus(result.message, 'success');
+            } else {
+                this.addTaskLog('error', `同步失败: ${result.error}`);
+                this.showStatus(`同步失败: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            this.addTaskLog('error', `同步出错: ${error.message}`);
+            this.showStatus(`同步出错: ${error.message}`, 'error');
+        }
+    }
+
+    // 主控浏览器变更
+    onMasterBrowserChange(configId) {
+        if (configId) {
+            this.addTaskLog('info', `主控浏览器已切换: ${this.getBrowserName(configId)}`);
+            
+            // 如果同步已启用，需要重新启动同步
+            if (this.syncEnabled) {
+                const enableSyncCheckbox = document.getElementById('enableSync');
+                if (enableSyncCheckbox && enableSyncCheckbox.checked) {
+                    this.toggleBrowserSync(false);
+                    setTimeout(() => {
+                        this.toggleBrowserSync(true);
+                    }, 500);
+                }
+            }
+        }
+        
+        // 更新浏览器列表显示
+        this.updateRunningBrowsersList();
+    }
+
+    // 更新主控浏览器选择器
+    updateMasterBrowserSelect() {
+        const masterSelect = document.getElementById('masterBrowser');
+        if (!masterSelect) return;
+
+        const currentValue = masterSelect.value;
+        masterSelect.innerHTML = '<option value="">选择主控浏览器</option>';
+
+        this.runningBrowsers.forEach(browser => {
+            const option = document.createElement('option');
+            option.value = browser.configId;
+            option.textContent = browser.configName;
+            
+            if (browser.configId === currentValue) {
+                option.selected = true;
+            }
+            
+            masterSelect.appendChild(option);
+        });
+    }
+
+    // 获取选中的浏览器
+    getSelectedBrowsers() {
+        const checkboxes = document.querySelectorAll('.browser-select:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    // 获取浏览器名称
+    getBrowserName(configId) {
+        const browser = this.runningBrowsers.find(b => b.configId === configId);
+        return browser ? browser.configName : configId;
+    }
+
+    // 更新布局状态显示
+    updateLayoutStatus(layoutType) {
+        const items = document.querySelectorAll('.browser-item');
+        items.forEach(item => {
+            // 移除旧的布局状态
+            const oldStatus = item.querySelector('.layout-status');
+            if (oldStatus) {
+                oldStatus.remove();
+            }
+            
+            // 添加新的布局状态
+            const browserName = item.querySelector('.browser-name');
+            if (browserName) {
+                const statusSpan = document.createElement('span');
+                statusSpan.className = `layout-status ${layoutType}`;
+                
+                const statusText = {
+                    'tile': '已平铺',
+                    'cascade': '已重叠',
+                    'restore': '已还原'
+                };
+                
+                statusSpan.innerHTML = `<i class="fas fa-window-restore"></i>${statusText[layoutType]}`;
+                browserName.appendChild(statusSpan);
+            }
+        });
+    }
+
+    // 初始化同步状态
+    initSyncState() {
+        this.syncEnabled = false;
+        const syncNowBtn = document.getElementById('syncNowBtn');
+        if (syncNowBtn) {
+            syncNowBtn.disabled = true;
+        }
+    }
+
+    // 调试同步功能
+    async debugSync() {
+        this.addTaskLog('info', '🔍 开始调试同步功能...');
+        
+        try {
+            // 获取同步状态
+            const status = await ipcRenderer.invoke('get-sync-status');
+            
+            this.addTaskLog('info', '📊 同步状态信息:');
+            this.addTaskLog('info', `  - 启用状态: ${status.enabled ? '✅ 已启用' : '❌ 未启用'}`);
+            
+            if (status.enabled) {
+                this.addTaskLog('info', `  - 主控浏览器: ${status.masterBrowser?.configName} (端口: ${status.masterBrowser?.debugPort})`);
+                this.addTaskLog('info', `  - 目标浏览器数量: ${status.targetCount}`);
+                this.addTaskLog('info', `  - 连接状态: ${status.connected ? '✅ 已连接' : '❌ 未连接'}`);
+                this.addTaskLog('info', `  - 脚本注入: ${status.injectedScript ? '✅ 已注入' : '❌ 未注入'}`);
+                
+                if (status.targetConfigIds && status.targetConfigIds.length > 0) {
+                    this.addTaskLog('info', `  - 目标浏览器ID: ${status.targetConfigIds.join(', ')}`);
+                }
+            }
+            
+            if (status.error) {
+                this.addTaskLog('error', `❌ 同步状态错误: ${status.error}`);
+            }
+            
+            // 获取运行中的浏览器信息
+            const runningBrowsers = await ipcRenderer.invoke('get-running-browsers');
+            this.addTaskLog('info', `📋 运行中的浏览器数量: ${runningBrowsers.length}`);
+            
+            runningBrowsers.forEach((browser, index) => {
+                this.addTaskLog('info', `  ${index + 1}. ${browser.configName} (ID: ${browser.configId}, 端口: ${browser.debugPort})`);
+            });
+            
+            // 检查选中的浏览器
+            const selectedBrowsers = this.getSelectedBrowsers();
+            this.addTaskLog('info', `✅ 当前选中的浏览器: ${selectedBrowsers.length} 个`);
+            this.addTaskLog('info', `  - 选中ID: ${selectedBrowsers.join(', ')}`);
+            
+            // 检查主控浏览器设置
+            const masterSelect = document.getElementById('masterBrowser');
+            const masterConfigId = masterSelect ? masterSelect.value : '';
+            this.addTaskLog('info', `👑 主控浏览器设置: ${masterConfigId || '未设置'}`);
+            
+            // 检查同步开关状态
+            const enableSync = document.getElementById('enableSync');
+            const syncChecked = enableSync ? enableSync.checked : false;
+            this.addTaskLog('info', `🔘 同步开关状态: ${syncChecked ? '✅ 已勾选' : '❌ 未勾选'}`);
+            
+            // 提供故障排除建议
+            this.addTaskLog('info', '💡 故障排除建议:');
+            
+            if (!status.enabled) {
+                this.addTaskLog('warning', '  1. 请确保已勾选"启用同步"复选框');
+                this.addTaskLog('warning', '  2. 请选择主控浏览器');
+                this.addTaskLog('warning', '  3. 请确保至少选中2个浏览器');
+            } else if (!status.connected) {
+                this.addTaskLog('warning', '  1. 主控浏览器可能已关闭，请检查');
+                this.addTaskLog('warning', '  2. 调试端口可能被占用');
+                this.addTaskLog('warning', '  3. 尝试重新启动同步功能');
+            } else if (!status.injectedScript) {
+                this.addTaskLog('warning', '  1. 事件监听器尚未注入，请等待页面加载完成');
+                this.addTaskLog('warning', '  2. 尝试在主控浏览器中刷新页面');
+                this.addTaskLog('warning', '  3. 检查主控浏览器的控制台是否有错误');
+            } else {
+                this.addTaskLog('success', '  ✅ 同步功能状态正常，可以开始测试');
+                this.addTaskLog('info', '  💻 在主控浏览器中按F12打开控制台，查看详细日志');
+                this.addTaskLog('info', '  🌐 尝试在主控浏览器地址栏输入网址并按回车');
+                this.addTaskLog('info', '  🖱️ 或者在页面中点击链接、按钮等元素');
+            }
+            
+        } catch (error) {
+            this.addTaskLog('error', `❌ 调试同步功能失败: ${error.message}`);
+        }
+    }
+
+    // 同步窗口大小
+    async syncWindowSizes() {
+        this.addTaskLog('info', '🖥️ 开始同步窗口大小...');
+        
+        try {
+            const result = await ipcRenderer.invoke('sync-window-sizes');
+            
+            if (result.success) {
+                this.addTaskLog('success', `✅ ${result.message}`);
+                
+                if (result.data && result.data.results) {
+                    this.addTaskLog('info', '📊 同步结果详情:');
+                    result.data.results.forEach((r, index) => {
+                        if (r.success) {
+                            this.addTaskLog('success', `  • ${r.browserName}: 同步成功`);
+                        } else {
+                            this.addTaskLog('error', `  • 浏览器 ${index + 1}: ${r.error}`);
+                        }
+                    });
+                }
+                
+                this.addTaskLog('info', '💡 提示: 所有浏览器窗口已同步到主浏览器的大小，坐标同步现在应该更加准确！');
+                this.showStatus('窗口大小同步成功', 'success');
+            } else {
+                this.addTaskLog('error', `❌ ${result.message}`);
+                this.showStatus(`窗口大小同步失败: ${result.error}`, 'error');
+            }
+            
+        } catch (error) {
+            this.addTaskLog('error', `❌ 窗口大小同步失败: ${error.message}`);
+            this.showStatus(`窗口大小同步失败: ${error.message}`, 'error');
+        }
+    }
+
+    // 测试同步连接
+    async testSyncConnection() {
+        const masterSelect = document.getElementById('masterBrowser');
+        const masterConfigId = masterSelect.value;
+        
+        if (!masterConfigId) {
+            this.addTaskLog('warning', '请先选择主控浏览器');
+            return;
+        }
+        
+        const targetConfigIds = this.getSelectedBrowsers().filter(id => id !== masterConfigId);
+        
+        if (targetConfigIds.length === 0) {
+            this.addTaskLog('warning', '请至少选择一个目标浏览器');
+            return;
+        }
+        
+        this.addTaskLog('info', '🔍 测试同步连接...');
+        
+        try {
+            const result = await ipcRenderer.invoke('sync-browser-action', {
+                masterConfigId: masterConfigId,
+                targetConfigIds: targetConfigIds,
+                action: {
+                    type: 'script',
+                    script: 'console.log("🎯 同步连接测试成功 - " + new Date().toLocaleTimeString())'
+                }
+            });
+            
+            if (result.success) {
+                this.addTaskLog('success', `✅ 同步连接测试成功: ${result.message}`);
+                this.addTaskLog('info', '💡 请在目标浏览器的控制台中查看测试消息');
+            } else {
+                this.addTaskLog('error', `❌ 同步连接测试失败: ${result.error}`);
+            }
+        } catch (error) {
+            this.addTaskLog('error', `❌ 测试连接时出错: ${error.message}`);
+        }
     }
 }
 
