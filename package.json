@@ -63,7 +63,8 @@
       "node_modules/**/*",
       "ultimate-sync-manager.js",
       "native-sync-manager.js",
-      "chrome-extension-manager.js"
+      "chrome-extension-manager.js",
+      "extension-monitor.js"
     ],
     "extraFiles": [
       {
