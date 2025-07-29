@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扩展修复工具</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .header .subtitle {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+        
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            border-left: 4px solid;
+        }
+        
+        .alert-danger {
+            background: #fff5f5;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        
+        .alert-info {
+            background: #e7f3ff;
+            border-left-color: #007bff;
+            color: #084298;
+        }
+        
+        .alert-success {
+            background: #f0fff4;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .card-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .config-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        
+        .config-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e9ecef;
+        }
+        
+        .config-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .config-checkbox {
+            margin: 0;
+        }
+        
+        .config-info {
+            flex: 1;
+        }
+        
+        .config-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .config-id {
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+        
+        .extension-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        
+        .extension-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e9ecef;
+        }
+        
+        .extension-checkbox {
+            margin: 0;
+        }
+        
+        .extension-info {
+            flex: 1;
+        }
+        
+        .extension-name {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        
+        .extension-id {
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover:not(:disabled) {
+            background: #1e7e34;
+            transform: translateY(-2px);
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .btn-warning:hover:not(:disabled) {
+            background: #e0a800;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            background: #545b62;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .log-container {
+            background: #1e1e1e;
+            color: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 24px;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .selection-actions {
+            margin: 16px 0;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 扩展修复工具</h1>
+            <p class="subtitle">修复丢失的浏览器扩展文件</p>
+        </div>
+        
+        <div class="alert alert-danger">
+            <strong>⚠️ 问题描述</strong><br>
+            如果您的浏览器扩展在操作后消失，这通常是因为扩展文件被意外删除。此工具可以帮您重新安装扩展。
+        </div>
+        
+        <div class="alert alert-info">
+            <strong>💡 修复原理</strong><br>
+            系统会强制重新安装所选扩展到所选配置的用户数据目录中，确保扩展文件完整可用。
+        </div>
+        
+        <div class="two-columns">
+            <div class="card">
+                <div class="card-title">
+                    📋 选择受影响的配置
+                </div>
+                <div class="selection-actions">
+                    <button id="selectAllConfigs" class="btn btn-secondary btn-small">全选</button>
+                    <button id="unselectAllConfigs" class="btn btn-secondary btn-small">取消全选</button>
+                </div>
+                <div id="configList" class="config-list">
+                    <!-- 配置列表将在这里动态生成 -->
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">
+                    🧩 选择要修复的扩展
+                </div>
+                <div class="selection-actions">
+                    <button id="selectAllExtensions" class="btn btn-secondary btn-small">全选</button>
+                    <button id="unselectAllExtensions" class="btn btn-secondary btn-small">取消全选</button>
+                </div>
+                <div id="extensionList" class="extension-list">
+                    <!-- 扩展列表将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <button id="repairBtn" class="btn btn-primary">
+                🔧 开始修复扩展
+            </button>
+            
+            <button id="startMonitoringBtn" class="btn btn-success">
+                👁️ 启动监控
+            </button>
+            
+            <button id="createBackupBtn" class="btn btn-warning">
+                💾 创建备份
+            </button>
+            
+            <button id="refreshBtn" class="btn btn-warning">
+                🔄 刷新列表
+            </button>
+            
+            <button id="backBtn" class="btn btn-secondary">
+                ⬅️ 返回主页
+            </button>
+        </div>
+        
+        <div id="logContainer" class="log-container hidden">
+            <div id="logContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        let configs = [];
+        let extensions = [];
+        let selectedConfigs = new Set();
+        let selectedExtensions = new Set();
+        
+        // DOM 元素
+        const configList = document.getElementById('configList');
+        const extensionList = document.getElementById('extensionList');
+        const repairBtn = document.getElementById('repairBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const backBtn = document.getElementById('backBtn');
+        const logContainer = document.getElementById('logContainer');
+        const logContent = document.getElementById('logContent');
+        
+        // 日志函数
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            
+            const colors = {
+                info: '#61dafb',
+                success: '#4caf50',
+                warning: '#ff9800',
+                error: '#f44336'
+            };
+            
+            logEntry.innerHTML = `
+                <span style="color: #888">[${timestamp}]</span>
+                <span style="color: ${colors[type] || colors.info}">${message}</span>
+            `;
+            
+            logContent.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            if (logContainer.classList.contains('hidden')) {
+                logContainer.classList.remove('hidden');
+            }
+        }
+        
+        // 加载配置列表
+        async function loadConfigs() {
+            try {
+                configs = await ipcRenderer.invoke('load-configs');
+                renderConfigList();
+                addLog(`📋 已加载 ${configs.length} 个配置`, 'info');
+            } catch (error) {
+                addLog(`❌ 加载配置失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 加载扩展列表
+        async function loadExtensions() {
+            try {
+                extensions = await ipcRenderer.invoke('get-downloaded-extensions');
+                renderExtensionList();
+                addLog(`🧩 已加载 ${extensions.length} 个扩展`, 'info');
+            } catch (error) {
+                addLog(`❌ 加载扩展失败: ${error.message}`, 'error');
+            }
+        }
+        
+        // 渲染配置列表
+        function renderConfigList() {
+            configList.innerHTML = '';
+            
+            configs.forEach(config => {
+                const configItem = document.createElement('div');
+                configItem.className = 'config-item';
+                configItem.innerHTML = `
+                    <input type="checkbox" class="config-checkbox" data-config-id="${config.id}" 
+                           ${selectedConfigs.has(config.id) ? 'checked' : ''}>
+                    <div class="config-info">
+                        <div class="config-name">${config.name}</div>
+                        <div class="config-id">ID: ${config.id}</div>
+                    </div>
+                `;
+                
+                const checkbox = configItem.querySelector('.config-checkbox');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedConfigs.add(config.id);
+                    } else {
+                        selectedConfigs.delete(config.id);
+                    }
+                });
+                
+                configList.appendChild(configItem);
+            });
+        }
+        
+        // 渲染扩展列表
+        function renderExtensionList() {
+            extensionList.innerHTML = '';
+            
+            extensions.forEach(ext => {
+                const extensionItem = document.createElement('div');
+                extensionItem.className = 'extension-item';
+                extensionItem.innerHTML = `
+                    <input type="checkbox" class="extension-checkbox" data-extension-id="${ext.extensionId}" 
+                           ${selectedExtensions.has(ext.extensionId) ? 'checked' : ''}>
+                    <div class="extension-info">
+                        <div class="extension-name">${ext.displayName}</div>
+                        <div class="extension-id">ID: ${ext.extensionId}</div>
+                    </div>
+                `;
+                
+                const checkbox = extensionItem.querySelector('.extension-checkbox');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        selectedExtensions.add(ext.extensionId);
+                    } else {
+                        selectedExtensions.delete(ext.extensionId);
+                    }
+                });
+                
+                extensionList.appendChild(extensionItem);
+            });
+        }
+        
+        // 全选配置
+        document.getElementById('selectAllConfigs').addEventListener('click', () => {
+            configs.forEach(config => selectedConfigs.add(config.id));
+            renderConfigList();
+        });
+        
+        // 取消全选配置
+        document.getElementById('unselectAllConfigs').addEventListener('click', () => {
+            selectedConfigs.clear();
+            renderConfigList();
+        });
+        
+        // 全选扩展
+        document.getElementById('selectAllExtensions').addEventListener('click', () => {
+            extensions.forEach(ext => selectedExtensions.add(ext.extensionId));
+            renderExtensionList();
+        });
+        
+        // 取消全选扩展
+        document.getElementById('unselectAllExtensions').addEventListener('click', () => {
+            selectedExtensions.clear();
+            renderExtensionList();
+        });
+        
+        // 修复按钮
+        repairBtn.addEventListener('click', async () => {
+            if (selectedConfigs.size === 0) {
+                alert('请先选择要修复的配置');
+                return;
+            }
+            
+            if (selectedExtensions.size === 0) {
+                alert('请先选择要修复的扩展');
+                return;
+            }
+            
+            const configCount = selectedConfigs.size;
+            const extensionCount = selectedExtensions.size;
+            
+            if (!confirm(`确定要为 ${configCount} 个配置修复 ${extensionCount} 个扩展吗？\n\n⚠️ 这将强制重新安装选中的扩展，覆盖现有文件。`)) {
+                return;
+            }
+            
+            repairBtn.disabled = true;
+            repairBtn.innerHTML = '<span class="loading"></span> 修复中...';
+            
+            addLog('🔧 开始修复扩展文件...', 'info');
+            addLog(`📋 配置数量: ${configCount}, 扩展数量: ${extensionCount}`, 'info');
+            
+            try {
+                const result = await ipcRenderer.invoke('repair-missing-extensions', {
+                    configIds: Array.from(selectedConfigs),
+                    extensionIds: Array.from(selectedExtensions)
+                });
+                
+                if (result.success) {
+                    addLog(`✅ 修复完成: ${result.message}`, 'success');
+                    
+                    // 显示详细结果
+                    result.results.forEach(res => {
+                        if (res.success) {
+                            addLog(`✅ ${res.configName}: 修复成功`, 'success');
+                        } else {
+                            addLog(`❌ ${res.configName}: ${res.error}`, 'error');
+                        }
+                    });
+                    
+                    addLog('💡 建议现在启动浏览器验证扩展是否正常工作', 'info');
+                } else {
+                    addLog(`❌ 修复失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ 修复出错: ${error.message}`, 'error');
+            } finally {
+                repairBtn.disabled = false;
+                repairBtn.innerHTML = '🔧 开始修复扩展';
+            }
+        });
+        
+        // 启动监控按钮
+        document.getElementById('startMonitoringBtn').addEventListener('click', async () => {
+            if (selectedConfigs.size === 0) {
+                alert('请先选择要监控的配置');
+                return;
+            }
+            
+            const startMonitoringBtn = document.getElementById('startMonitoringBtn');
+            startMonitoringBtn.disabled = true;
+            startMonitoringBtn.innerHTML = '<span class="loading"></span> 启动中...';
+            
+            let successCount = 0;
+            
+            for (const configId of selectedConfigs) {
+                const config = configs.find(c => c.id === configId);
+                if (!config) continue;
+                
+                try {
+                    const result = await ipcRenderer.invoke('start-extension-monitoring', {
+                        configId: config.id,
+                        userDataDir: `/Users/songjun/Library/Application Support/ChromiumManager/${config.randomFolder || 'browser-default'}`,
+                        configName: config.name
+                    });
+                    
+                    if (result.success) {
+                        addLog(`✅ ${config.name}: 监控已启动`, 'success');
+                        successCount++;
+                    } else {
+                        addLog(`❌ ${config.name}: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`❌ ${config.name}: 启动监控失败 - ${error.message}`, 'error');
+                }
+            }
+            
+            addLog(`📊 监控启动完成: ${successCount}/${selectedConfigs.size} 个配置`, 'info');
+            
+            startMonitoringBtn.disabled = false;
+            startMonitoringBtn.innerHTML = '👁️ 启动监控';
+        });
+        
+        // 创建备份按钮
+        document.getElementById('createBackupBtn').addEventListener('click', async () => {
+            if (selectedConfigs.size === 0) {
+                alert('请先选择要备份的配置');
+                return;
+            }
+            
+            const createBackupBtn = document.getElementById('createBackupBtn');
+            createBackupBtn.disabled = true;
+            createBackupBtn.innerHTML = '<span class="loading"></span> 备份中...';
+            
+            let successCount = 0;
+            
+            for (const configId of selectedConfigs) {
+                const config = configs.find(c => c.id === configId);
+                if (!config) continue;
+                
+                try {
+                    const result = await ipcRenderer.invoke('manual-extension-backup', {
+                        configId: config.id,
+                        userDataDir: `/Users/songjun/Library/Application Support/ChromiumManager/${config.randomFolder || 'browser-default'}`,
+                        configName: config.name
+                    });
+                    
+                    if (result.success) {
+                        addLog(`✅ ${config.name}: 备份已创建`, 'success');
+                        successCount++;
+                    } else {
+                        addLog(`❌ ${config.name}: ${result.error}`, 'error');
+                    }
+                } catch (error) {
+                    addLog(`❌ ${config.name}: 备份失败 - ${error.message}`, 'error');
+                }
+            }
+            
+            addLog(`📊 备份完成: ${successCount}/${selectedConfigs.size} 个配置`, 'info');
+            
+            createBackupBtn.disabled = false;
+            createBackupBtn.innerHTML = '💾 创建备份';
+        });
+        
+        // 刷新按钮
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span class="loading"></span> 刷新中...';
+            
+            try {
+                await Promise.all([loadConfigs(), loadExtensions()]);
+                addLog('🔄 列表刷新完成', 'success');
+            } catch (error) {
+                addLog(`❌ 刷新失败: ${error.message}`, 'error');
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '🔄 刷新列表';
+            }
+        });
+        
+        // 返回按钮
+        backBtn.addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+        
+        // 页面初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            addLog('🏠 扩展修复工具已启动', 'info');
+            addLog('📋 正在加载数据...', 'info');
+            
+            await Promise.all([loadConfigs(), loadExtensions()]);
+            
+            addLog('✅ 数据加载完成，请选择要修复的配置和扩展', 'success');
+        });
+    </script>
+</body>
+</html> 

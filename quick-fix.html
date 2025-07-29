@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快速修复工具</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .header .subtitle {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .error-card {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        
+        .success-card {
+            border-left-color: #28a745;
+            background: #f0fff4;
+        }
+        
+        .warning-card {
+            border-left-color: #ffc107;
+            background: #fffbf0;
+        }
+        
+        .card-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .card-content {
+            line-height: 1.6;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 16px;
+            margin-top: 32px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #1e7e34;
+            transform: translateY(-2px);
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .btn-warning:hover {
+            background: #e0a800;
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .log-container {
+            background: #1e1e1e;
+            color: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 16px;
+        }
+        
+        .issue-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .issue-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .issue-item:last-child {
+            border-bottom: none;
+        }
+        
+        .icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 快速修复工具</h1>
+            <p class="subtitle">解决指纹浏览器管理器的常见问题</p>
+        </div>
+        
+        <div id="currentStatus" class="status-card">
+            <div class="card-title">
+                📊 当前状态
+            </div>
+            <div class="card-content">
+                点击"开始诊断"来检查系统状态...
+            </div>
+        </div>
+        
+        <div id="issuesCard" class="status-card error-card hidden">
+            <div class="card-title">
+                ⚠️ 发现问题
+            </div>
+            <div class="card-content">
+                <ul id="issuesList" class="issue-list"></ul>
+            </div>
+        </div>
+        
+        <div id="fixesCard" class="status-card success-card hidden">
+            <div class="card-title">
+                ✅ 已应用修复
+            </div>
+            <div class="card-content">
+                <ul id="fixesList" class="issue-list"></ul>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <button id="diagnoseBtn" class="btn btn-primary">
+                🔍 开始诊断
+            </button>
+            
+            <button id="restoreBtn" class="btn btn-warning">
+                📂 从备份恢复配置
+            </button>
+            
+            <button id="reinstallBtn" class="btn btn-danger">
+                🔄 重新安装浏览器
+            </button>
+            
+            <button id="openMainBtn" class="btn btn-success">
+                🏠 打开主应用
+            </button>
+        </div>
+        
+        <div id="logContainer" class="log-container hidden">
+            <div id="logContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        // DOM 元素
+        const diagnoseBtn = document.getElementById('diagnoseBtn');
+        const restoreBtn = document.getElementById('restoreBtn');
+        const reinstallBtn = document.getElementById('reinstallBtn');
+        const openMainBtn = document.getElementById('openMainBtn');
+        const currentStatus = document.getElementById('currentStatus');
+        const issuesCard = document.getElementById('issuesCard');
+        const fixesCard = document.getElementById('fixesCard');
+        const issuesList = document.getElementById('issuesList');
+        const fixesList = document.getElementById('fixesList');
+        const logContainer = document.getElementById('logContainer');
+        const logContent = document.getElementById('logContent');
+        
+        // 日志函数
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            
+            const colors = {
+                info: '#61dafb',
+                success: '#4caf50',
+                warning: '#ff9800',
+                error: '#f44336'
+            };
+            
+            logEntry.innerHTML = `
+                <span style="color: #888">[${timestamp}]</span>
+                <span style="color: ${colors[type] || colors.info}">${message}</span>
+            `;
+            
+            logContent.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            if (logContainer.classList.contains('hidden')) {
+                logContainer.classList.remove('hidden');
+            }
+        }
+        
+        // 诊断按钮
+        diagnoseBtn.addEventListener('click', async () => {
+            diagnoseBtn.disabled = true;
+            diagnoseBtn.innerHTML = '<span class="loading"></span> 诊断中...';
+            
+            addLog('🔍 开始系统诊断...', 'info');
+            
+            try {
+                const result = await ipcRenderer.invoke('quick-diagnose-and-fix');
+                
+                if (result.success) {
+                    // 更新状态卡片
+                    if (result.hasIssues) {
+                        currentStatus.className = 'status-card warning-card';
+                        currentStatus.querySelector('.card-title').textContent = '⚠️ 发现问题需要处理';
+                        currentStatus.querySelector('.card-content').textContent = 
+                            `检测到 ${result.issues.length} 个问题，${result.fixes.length} 个已自动修复`;
+                        
+                        // 显示问题列表
+                        if (result.issues.length > 0) {
+                            issuesCard.classList.remove('hidden');
+                            issuesList.innerHTML = '';
+                            result.issues.forEach(issue => {
+                                const li = document.createElement('li');
+                                li.className = 'issue-item';
+                                li.innerHTML = `
+                                    <span class="icon">❌</span>
+                                    <span>${issue}</span>
+                                `;
+                                issuesList.appendChild(li);
+                            });
+                        }
+                        
+                        // 显示修复列表
+                        if (result.fixes.length > 0) {
+                            fixesCard.classList.remove('hidden');
+                            fixesList.innerHTML = '';
+                            result.fixes.forEach(fix => {
+                                const li = document.createElement('li');
+                                li.className = 'issue-item';
+                                li.innerHTML = `
+                                    <span class="icon">✅</span>
+                                    <span>${fix}</span>
+                                `;
+                                fixesList.appendChild(li);
+                            });
+                        }
+                    } else {
+                        currentStatus.className = 'status-card success-card';
+                        currentStatus.querySelector('.card-title').textContent = '✅ 系统状态良好';
+                        currentStatus.querySelector('.card-content').textContent = 
+                            '所有组件运行正常，没有发现问题。如果仍有问题，请尝试其他修复选项。';
+                    }
+                    
+                    addLog('✅ 诊断完成', 'success');
+                } else {
+                    addLog(`❌ 诊断失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ 诊断出错: ${error.message}`, 'error');
+            } finally {
+                diagnoseBtn.disabled = false;
+                diagnoseBtn.innerHTML = '🔍 重新诊断';
+            }
+        });
+        
+        // 恢复配置按钮
+        restoreBtn.addEventListener('click', async () => {
+            if (!confirm('确定要从备份文件恢复配置吗？这将覆盖当前配置。')) {
+                return;
+            }
+            
+            restoreBtn.disabled = true;
+            restoreBtn.innerHTML = '<span class="loading"></span> 恢复中...';
+            
+            addLog('📂 开始从备份恢复配置...', 'info');
+            
+            try {
+                const result = await ipcRenderer.invoke('emergency-restore-configs');
+                
+                if (result.success) {
+                    addLog(`✅ ${result.message}`, 'success');
+                    
+                    currentStatus.className = 'status-card success-card';
+                    currentStatus.querySelector('.card-title').textContent = '✅ 配置恢复成功';
+                    currentStatus.querySelector('.card-content').textContent = result.message;
+                } else {
+                    addLog(`❌ 恢复失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ 恢复出错: ${error.message}`, 'error');
+            } finally {
+                restoreBtn.disabled = false;
+                restoreBtn.innerHTML = '📂 从备份恢复配置';
+            }
+        });
+        
+        // 重新安装浏览器按钮
+        reinstallBtn.addEventListener('click', async () => {
+            if (!confirm('确定要重新安装 Chromium 浏览器吗？这会删除现有安装并重新下载。')) {
+                return;
+            }
+            
+            reinstallBtn.disabled = true;
+            reinstallBtn.innerHTML = '<span class="loading"></span> 重新安装中...';
+            
+            addLog('🔄 开始重新安装浏览器...', 'info');
+            
+            try {
+                const result = await ipcRenderer.invoke('reinstall-browser');
+                
+                if (result.success) {
+                    addLog('✅ 浏览器重新安装成功', 'success');
+                    
+                    currentStatus.className = 'status-card success-card';
+                    currentStatus.querySelector('.card-title').textContent = '✅ 浏览器安装成功';
+                    currentStatus.querySelector('.card-content').textContent = 
+                        `Chromium 浏览器已重新安装到: ${result.executablePath}`;
+                } else {
+                    addLog(`❌ 重新安装失败: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`❌ 重新安装出错: ${error.message}`, 'error');
+            } finally {
+                reinstallBtn.disabled = false;
+                reinstallBtn.innerHTML = '🔄 重新安装浏览器';
+            }
+        });
+        
+        // 打开主应用按钮
+        openMainBtn.addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+        
+        // 页面加载时的提示
+        addLog('🏠 欢迎使用快速修复工具', 'info');
+        addLog('💡 点击"开始诊断"来检查系统状态', 'info');
+    </script>
+</body>
+</html> 
