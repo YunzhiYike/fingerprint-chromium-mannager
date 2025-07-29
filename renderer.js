@@ -162,9 +162,38 @@ class BrowserConfigManager {
 
         const settingsBtn = document.getElementById('settingsBtn');
         if (settingsBtn) {
-            settingsBtn.addEventListener('click', () => {
-                this.showSettings();
+                    settingsBtn.addEventListener('click', () => {
+            this.showSettings();
+        });
+
+        // 快速修复按钮
+        const quickFixBtn = document.getElementById('quickFixBtn');
+        if (quickFixBtn) {
+            quickFixBtn.addEventListener('click', () => {
+                window.location.href = 'quick-fix.html';
             });
+        }
+
+        // 扩展管理按钮
+        const extensionsBtn = document.getElementById('extensionsBtn');
+        if (extensionsBtn) {
+            extensionsBtn.addEventListener('click', () => {
+                // 如果已有扩展管理页面，打开它；否则显示提示
+                if (document.getElementById('extensionsPage')) {
+                    window.extensionManager.showExtensionsPage();
+                } else {
+                    alert('扩展管理功能即将推出，请使用扩展修复工具解决当前问题');
+                }
+            });
+        }
+
+        // 扩展修复按钮
+        const extensionRepairBtn = document.getElementById('extensionRepairBtn');
+        if (extensionRepairBtn) {
+            extensionRepairBtn.addEventListener('click', () => {
+                window.location.href = 'extension-repair.html';
+            });
+        }
         }
 
         const batchTaskBtn = document.getElementById('batchTaskBtn');
@@ -947,21 +976,50 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
     }
 
     async resetSettings() {
-        if (confirm('确定要重置所有设置为默认值吗？')) {
-            try {
-                const result = await ipcRenderer.invoke('reset-app-settings');
-                
-                if (result.success) {
-                    this.showStatus('设置已重置为默认值');
-                    await this.loadSettings();
-                    this.checkChromiumStatus();
-                } else {
-                    this.showStatus('重置设置失败: ' + result.error);
-                }
-            } catch (error) {
-                console.error('重置设置失败:', error);
-                this.showStatus('重置设置失败');
+        // 首先询问是否要重置设置
+        if (!confirm('确定要重置所有设置为默认值吗？')) {
+            return;
+        }
+
+        // 询问是否同时重新安装浏览器
+        const reinstallBrowser = confirm('是否同时重新安装/下载 Chromium 浏览器？\n\n点击"确定"将会：\n1. 重置所有设置为默认值\n2. 重新下载并安装最新版本的 Chromium\n\n点击"取消"将只重置设置，不重新安装浏览器');
+
+        try {
+            // 重置设置
+            const resetResult = await ipcRenderer.invoke('reset-app-settings');
+            
+            if (!resetResult.success) {
+                this.showStatus('重置设置失败: ' + resetResult.error);
+                return;
             }
+
+            this.showStatus('设置已重置为默认值');
+            await this.loadSettings();
+
+            // 如果用户选择重新安装浏览器
+            if (reinstallBrowser) {
+                this.showStatus('开始重新安装 Chromium 浏览器...');
+                
+                try {
+                    const reinstallResult = await ipcRenderer.invoke('reinstall-browser');
+                    
+                    if (reinstallResult.success) {
+                        this.showStatus('Chromium 浏览器重新安装成功');
+                        this.checkChromiumStatus();
+                    } else {
+                        this.showStatus('重新安装浏览器失败: ' + reinstallResult.error);
+                    }
+                } catch (reinstallError) {
+                    console.error('重新安装浏览器失败:', reinstallError);
+                    this.showStatus('重新安装浏览器失败');
+                }
+            } else {
+                this.checkChromiumStatus();
+            }
+
+        } catch (error) {
+            console.error('重置设置失败:', error);
+            this.showStatus('重置设置失败');
         }
     }
 

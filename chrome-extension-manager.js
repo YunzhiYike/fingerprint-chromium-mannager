@@ -144,6 +144,11 @@ class ChromeExtensionManager {
         });
         
         fileStream.on('error', (error) => {
+          // 🗑️ 文件删除日志
+          console.warn(`🗑️ [文件删除] 清理部分下载的文件: ${filePath}`);
+          console.warn(`🔍 [删除原因] 下载过程中发生错误: ${error.message}`);
+          console.warn(`📚 [调用栈] ${new Error().stack}`);
+          
           require('fs').unlink(filePath, () => {}); // 清理部分下载的文件
           reject(error);
         });
@@ -196,12 +201,12 @@ class ChromeExtensionManager {
   }
 
   // 为浏览器配置安装扩展
-  async installExtensionsToConfig(configId, userDataDir, extensionIds = []) {
+  async installExtensionsToConfig(configId, userDataDir, extensionIds = [], forceReinstall = false) {
     try {
       const extensionsPath = path.join(userDataDir, 'Default', 'Extensions');
       await fs.mkdir(extensionsPath, { recursive: true });
       
-      console.log(`🔧 为配置 ${configId} 安装扩展...`);
+      console.log(`🔧 为配置 ${configId} 安装扩展 (强制重装: ${forceReinstall})...`);
       
       const installResults = [];
       
@@ -212,8 +217,8 @@ class ChromeExtensionManager {
           // 检查CRX文件是否存在
           await fs.access(crxPath);
           
-          // 解压并安装扩展
-          const result = await this.installSingleExtension(crxPath, extensionsPath, extensionId);
+          // 解压并安装扩展（传递强制重装参数）
+          const result = await this.installSingleExtension(crxPath, extensionsPath, extensionId, forceReinstall);
           installResults.push(result);
           
         } catch (error) {
@@ -238,18 +243,72 @@ class ChromeExtensionManager {
   }
 
   // 安装单个扩展 (Chrome标准目录结构)
-  async installSingleExtension(crxPath, extensionsPath, extensionId) {
+  async installSingleExtension(crxPath, extensionsPath, extensionId, forceReinstall = false) {
     try {
       // Chrome标准扩展目录结构: Extensions/extensionId/version/
       const extensionBaseDir = path.join(extensionsPath, extensionId);
       
-      // 🗑️ 先清理现有扩展目录（防止文件冲突）
+      // 🔍 检查扩展是否已存在且完整
+      let extensionExists = false;
       try {
         await fs.access(extensionBaseDir);
-        console.log(`🗑️ 清理现有扩展目录: ${extensionBaseDir}`);
-        await fs.rm(extensionBaseDir, { recursive: true, force: true });
+        
+        // 检查是否有版本目录
+        const versionDirs = await fs.readdir(extensionBaseDir);
+        const validVersions = [];
+        
+        for (const versionDir of versionDirs) {
+          const versionPath = path.join(extensionBaseDir, versionDir);
+          const manifestPath = path.join(versionPath, 'manifest.json');
+          
+          try {
+            await fs.access(manifestPath);
+            validVersions.push(versionDir);
+          } catch (error) {
+            // manifest.json 不存在，版本目录无效
+          }
+        }
+        
+        if (validVersions.length > 0) {
+          extensionExists = true;
+          console.log(`✅ 扩展 ${extensionId} 已存在，版本: ${validVersions.join(', ')}`);
+          
+          if (!forceReinstall) {
+            console.log(`📦 跳过重复安装，扩展已存在: ${extensionBaseDir}`);
+            return { 
+              success: true, 
+              extensionId, 
+              path: path.join(extensionBaseDir, validVersions[0]), 
+              version: validVersions[0],
+              skipped: true,
+              reason: '扩展已存在且完整'
+            };
+          } else {
+            // 🗑️ 扩展目录删除日志
+            console.warn(`🗑️ [扩展删除] 强制重新安装，删除扩展目录: ${extensionBaseDir}`);
+            console.warn(`🔍 [删除原因] 用户选择强制重装扩展 (forceReinstall=true)`);
+            console.warn(`📚 [调用栈] ${new Error().stack}`);
+            console.warn(`⚠️ [影响范围] 扩展ID=${extensionId} 的所有版本将被删除`);
+            
+            await fs.rm(extensionBaseDir, { recursive: true, force: true });
+            extensionExists = false;
+            
+            console.warn(`✅ [删除完成] 扩展目录已删除: ${extensionBaseDir}`);
+          }
+        } else {
+          // 🗑️ 扩展目录删除日志
+          console.warn(`🗑️ [扩展删除] 扩展目录存在但无有效版本，删除: ${extensionBaseDir}`);
+          console.warn(`🔍 [删除原因] 扩展目录结构损坏或无有效manifest.json文件`);
+          console.warn(`📚 [调用栈] ${new Error().stack}`);
+          console.warn(`⚠️ [影响范围] 扩展ID=${extensionId} 的损坏目录将被删除`);
+          
+          await fs.rm(extensionBaseDir, { recursive: true, force: true });
+          
+          console.warn(`✅ [删除完成] 损坏的扩展目录已删除: ${extensionBaseDir}`);
+        }
       } catch (error) {
-        // 目录不存在，忽略错误
+        // 目录不存在，正常继续安装
+        console.log(`📁 扩展目录不存在，准备新安装: ${extensionBaseDir}`);
       }
       
       // 解析CRX文件并提取ZIP内容
@@ -341,10 +400,18 @@ class ChromeExtensionManager {
         
         // 清理失败的安装
         try {
+          // 🗑️ 扩展目录删除日志
+          console.error(`🗑️ [扩展删除] 清理安装失败的扩展目录: ${extensionBaseDir}`);
+          console.error(`🔍 [删除原因] 扩展安装过程失败: ${error.message}`);
+          console.error(`📚 [调用栈] ${new Error().stack}`);
+          console.error(`⚠️ [影响范围] 扩展ID=${extensionId} 的失败安装将被清理`);
+          
           await fs.rm(extensionBaseDir, { recursive: true, force: true });
-          console.log(`🗑️ 已清理失败的安装目录: ${extensionBaseDir}`);
+          
+          console.error(`✅ [删除完成] 失败的安装目录已清理: ${extensionBaseDir}`);
         } catch (cleanupError) {
-          console.warn(`⚠️ 清理失败目录时出错: ${cleanupError.message}`);
+          console.error(`❌ [删除失败] 清理失败目录时出错: ${cleanupError.message}`);
+          console.error(`📚 [错误调用栈] ${new Error().stack}`);
         }
         
         return { success: false, extensionId, error: error.message };
@@ -353,9 +420,17 @@ class ChromeExtensionManager {
         console.log(`🐛 临时文件保留用于调试: ${tempZipPath}`);
         // 只清理临时解压目录
         try {
+          // 🗑️ 临时目录删除日志
+          console.log(`🗑️ [临时删除] 清理临时解压目录: ${tempExtractDir}`);
+          console.log(`🔍 [删除原因] 扩展安装完成，清理临时文件`);
+          console.log(`📚 [调用栈] ${new Error().stack}`);
+          
           await fs.rm(tempExtractDir, { recursive: true, force: true });
+          
+          console.log(`✅ [删除完成] 临时解压目录已清理: ${tempExtractDir}`);
         } catch (cleanupError) {
-          console.warn(`⚠️ 清理临时解压目录失败: ${cleanupError.message}`);
+          console.warn(`❌ [删除失败] 清理临时解压目录失败: ${cleanupError.message}`);
+          console.warn(`📚 [错误调用栈] ${new Error().stack}`);
         }
       }
       
@@ -373,10 +448,18 @@ class ChromeExtensionManager {
       
       // 清理失败的安装
       try {
+        // 🗑️ 扩展目录删除日志
+        console.error(`🗑️ [扩展删除] 清理安装失败的扩展目录: ${extensionDir}`);
+        console.error(`🔍 [删除原因] 扩展解压失败，清理残留文件`);
+        console.error(`📚 [调用栈] ${new Error().stack}`);
+        console.error(`⚠️ [影响范围] 扩展ID=${extensionId} 的失败安装将被清理`);
+        
         await fs.rm(extensionDir, { recursive: true, force: true });
-        console.log(`🗑️ 已清理失败的安装目录: ${extensionDir}`);
+        
+        console.error(`✅ [删除完成] 失败的安装目录已清理: ${extensionDir}`);
       } catch (cleanupError) {
-        console.warn(`⚠️ 清理失败目录时出错: ${cleanupError.message}`);
+        console.error(`❌ [删除失败] 清理失败目录时出错: ${cleanupError.message}`);
+        console.error(`📚 [错误调用栈] ${new Error().stack}`);
       }
       
       return { success: false, extensionId, error: error.message };
@@ -440,6 +523,7 @@ class ChromeExtensionManager {
 
   // 跨平台解压ZIP文件中的特定文件
   async extractFileFromZip(zipPath, fileName) {
+    // 恢复正常功能
     try {
       if (process.platform === 'win32') {
         // Windows: 使用PowerShell的Expand-Archive
@@ -454,7 +538,14 @@ class ChromeExtensionManager {
         const content = await fs.readFile(filePath, 'utf8');
         
         // 清理临时目录
+        // 🗑️ 临时目录删除日志
+        console.log(`🗑️ [临时删除] 清理Windows解压临时目录: ${tempDir}`);
+        console.log(`🔍 [删除原因] ZIP文件解压完成，清理临时文件`);
+        console.log(`📚 [调用栈] ${new Error().stack}`);
+        
         await fs.rm(tempDir, { recursive: true, force: true });
+        
+        console.log(`✅ [删除完成] Windows解压临时目录已清理: ${tempDir}`);
         
         return content;
       } else {
@@ -527,8 +618,18 @@ class ChromeExtensionManager {
             
             console.log(`✅ 扩展信息解析完成: ${displayName} (${manifest.version})`);
             
-            // 清理临时文件
-            await fs.unlink(tempZipPath).catch(() => {});
+                    // 清理临时文件
+        // 🗑️ 临时文件删除日志
+        console.log(`🗑️ [临时删除] 清理临时ZIP文件: ${tempZipPath}`);
+        console.log(`🔍 [删除原因] 扩展信息提取完成，清理临时ZIP文件`);
+        console.log(`📚 [调用栈] ${new Error().stack}`);
+        
+        await fs.unlink(tempZipPath).catch((error) => {
+          console.warn(`❌ [删除失败] 清理临时ZIP文件失败: ${error.message}`);
+          console.warn(`📚 [错误调用栈] ${new Error().stack}`);
+        });
+        
+        console.log(`✅ [删除完成] 临时ZIP文件已清理: ${tempZipPath}`);
             
           } catch (manifestError) {
             console.warn(`⚠️ 无法读取扩展 ${extensionId} 的manifest:`, manifestError.message);
@@ -571,7 +672,15 @@ class ChromeExtensionManager {
       }
       
       // 删除CRX文件
+      // 🗑️ CRX文件删除日志
+      console.warn(`🗑️ [扩展删除] 删除扩展CRX文件: ${crxFilePath}`);
+      console.warn(`🔍 [删除原因] 用户主动删除扩展`);
+      console.warn(`📚 [调用栈] ${new Error().stack}`);
+      console.warn(`⚠️ [影响范围] 扩展ID=${extensionId} 的源文件将被删除`);
+      
       await fs.unlink(crxFilePath);
+      
+      console.warn(`✅ [删除完成] 扩展CRX文件已删除: ${crxFilePath}`);
       
       // 清理可能存在的临时文件
       const tempFiles = [
@@ -581,9 +690,17 @@ class ChromeExtensionManager {
       
       for (const tempFile of tempFiles) {
         try {
+          // 🗑️ 临时文件删除日志
+          console.log(`🗑️ [临时删除] 清理扩展临时文件: ${tempFile}`);
+          console.log(`🔍 [删除原因] 扩展删除，清理相关临时文件`);
+          console.log(`📚 [调用栈] ${new Error().stack}`);
+          
           await fs.unlink(tempFile);
+          
+          console.log(`✅ [删除完成] 临时文件已清理: ${tempFile}`);
         } catch (error) {
           // 忽略临时文件删除失败，它们可能不存在
+          console.log(`📝 [删除跳过] 临时文件不存在或已删除: ${tempFile}`);
         }
       }
       

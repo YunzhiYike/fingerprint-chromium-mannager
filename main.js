@@ -8,6 +8,7 @@ const BrowserDownloader = require('./browser-downloader');
 const UltimateSyncManager = require('./ultimate-sync-manager');
 const NativeSyncManager = require('./native-sync-manager');
 const ChromeExtensionManager = require('./chrome-extension-manager');
+const ExtensionFileMonitor = require('./extension-monitor');
 const { log } = require('console');
 
 // 配置文件路径 - 使用用户数据目录避免打包后只读问题
@@ -59,10 +60,17 @@ async function migrateOldConfigFiles() {
                 
                 // 可选：删除旧文件（在asar包外的情况下）
                 try {
+                    // 🗑️ 旧配置文件删除日志
+                    console.log(`🗑️ [配置删除] 删除旧配置文件: ${oldConfigFile}`);
+                    console.log(`🔍 [删除原因] 配置文件迁移完成，清理旧文件`);
+                    console.log(`📚 [调用栈] ${new Error().stack}`);
+                    
                     await fs.unlink(oldConfigFile);
-                    console.log(`🗑️ 已删除旧配置文件: ${oldConfigFile}`);
+                    
+                    console.log(`✅ [删除完成] 旧配置文件已删除: ${oldConfigFile}`);
                 } catch (error) {
                     // 忽略删除错误（可能在asar包内）
+                    console.log(`📝 [删除跳过] 旧配置文件删除失败或不存在: ${error.message}`);
                 }
             }
         } catch (error) {
@@ -81,10 +89,17 @@ async function migrateOldConfigFiles() {
                 
                 // 可选：删除旧文件
                 try {
+                    // 🗑️ 旧设置文件删除日志
+                    console.log(`🗑️ [设置删除] 删除旧设置文件: ${oldSettingsFile}`);
+                    console.log(`🔍 [删除原因] 设置文件迁移完成，清理旧文件`);
+                    console.log(`📚 [调用栈] ${new Error().stack}`);
+                    
                     await fs.unlink(oldSettingsFile);
-                    console.log(`🗑️ 已删除旧设置文件: ${oldSettingsFile}`);
+                    
+                    console.log(`✅ [删除完成] 旧设置文件已删除: ${oldSettingsFile}`);
                 } catch (error) {
                     // 忽略删除错误
+                    console.log(`📝 [删除跳过] 旧设置文件删除失败或不存在: ${error.message}`);
                 }
             }
         } catch (error) {
@@ -163,6 +178,9 @@ const browserDownloader = new BrowserDownloader();
 // Chrome扩展管理器实例 - 在应用初始化后创建
 let extensionManager;
 
+// 扩展文件监控器实例
+let extensionMonitor;
+
 // 获取可用的调试端口
 async function getAvailableDebugPort() {
   const usedPorts = new Set();
@@ -215,9 +233,13 @@ function createWindow() {
             mainWindow.webContents.send('app-will-quit');
 
             // 等待一段时间让渲染进程处理
-            setTimeout(() => {
-                // 强制关闭所有浏览器进程
-                cleanup();
+            setTimeout(async () => {
+                try {
+                    // 强制关闭所有浏览器进程
+                    await cleanup();
+                } catch (error) {
+                    console.error('清理过程失败:', error);
+                }
 
                 // 真正关闭窗口
                 mainWindow.destroy();
@@ -252,6 +274,15 @@ app.whenReady().then(async () => {
             batchDownloadExtensions: () => ({ success: false, error: '扩展管理器未初始化' })
         };
     }
+
+    // 🔍 创建扩展文件监控器实例
+    try {
+        extensionMonitor = new ExtensionFileMonitor();
+        console.log(`🔍 扩展文件监控器已初始化`);
+    } catch (error) {
+        console.error(`❌ 扩展文件监控器初始化失败: ${error.message}`);
+        extensionMonitor = null;
+    }
     
     await loadAppSettings();
     createWindow();
@@ -260,12 +291,12 @@ app.whenReady().then(async () => {
 // 应用退出前的清理
 app.on('before-quit', async () => {
     console.log('应用准备退出，正在清理所有浏览器进程...');
-    cleanup();
+    await cleanup();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
     // 清理所有浏览器进程
-    cleanup();
+    await cleanup();
 
     if (process.platform !== 'darwin') {
         app.quit();
@@ -279,15 +310,15 @@ app.on('activate', () => {
 });
 
 // 处理异常退出
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
     console.log('接收到 SIGINT 信号，正在清理...');
-    cleanup();
+    await cleanup();
     process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
     console.log('接收到 SIGTERM 信号，正在清理...');
-    cleanup();
+    await cleanup();
     process.exit(0);
 });
 
@@ -301,7 +332,7 @@ process.on('uncaughtException', (error) => {
 
     // 只有在严重错误时才退出
     console.error('严重错误:', error);
-    cleanup();
+    cleanup(); // 同步调用，因为是错误退出
     process.exit(1);
 });
 
@@ -312,7 +343,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // 清理函数
-function cleanup() {
+async function cleanup() {
     console.log('开始清理浏览器进程和代理转发器...');
 
     // 关闭所有追踪的浏览器进程
@@ -343,6 +374,15 @@ function cleanup() {
 
     // 停止所有代理转发器
     proxyForwarder.stopAllForwarders();
+
+    // 停止扩展文件监控
+    if (extensionMonitor) {
+        try {
+            await extensionMonitor.stopAllMonitoring();
+        } catch (error) {
+            console.error('停止扩展监控失败:', error);
+        }
+    }
 
     // 清空进程列表
     runningBrowsers.clear();
@@ -376,12 +416,22 @@ ipcMain.handle('launch-browser', async (event, config) => {
       return { success: false, error: '该配置的浏览器实例已在运行中' };
     }
 
-    const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
+              const { args, debugPort, proxyPort, userDataDir } = await buildChromiumArgs(config);
+        
+        // ✅ 扩展参数已在buildChromiumArgs中动态构建
+        console.log('🚀 浏览器启动参数:', args);
+        console.log('📁 用户数据目录:', userDataDir);
 
-    const child = spawn(appSettings.chromiumPath, args, {
-      detached: true,
-      stdio: 'ignore'
-    });
+  // 🚀 打印完整的浏览器启动命令
+  console.log(`🚀 浏览器启动命令 [${config.name}]:`);
+  console.log(`   可执行文件: ${appSettings.chromiumPath}`);
+  console.log(`   启动参数: ${args.join(' ')}`);
+  console.log(`   完整命令: ${appSettings.chromiumPath} ${args.join(' ')}`);
+
+  const child = spawn(appSettings.chromiumPath, args, {
+    detached: true,
+    stdio: 'ignore'
+  });
 
     // 记录进程信息
     runningBrowsers.set(config.id, {
@@ -394,11 +444,39 @@ ipcMain.handle('launch-browser', async (event, config) => {
     });
 
     // 监听进程退出事件
-    child.on('exit', () => {
+    child.on('exit', (code, signal) => {
+      // 🔍 浏览器进程退出日志
+      console.warn(`🚪 [浏览器退出] 配置 "${config.name}" 的浏览器进程已退出`);
+      console.warn(`🔍 [退出信息] 退出码: ${code}, 信号: ${signal}`);
+      console.warn(`📁 [用户数据] 目录: ${userDataDir}`);
+      console.warn(`📚 [调用栈] ${new Error().stack}`);
+      
+      // 检查扩展目录是否还存在
+      const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+      fs.access(extensionsDir)
+        .then(() => {
+          console.log(`✅ [扩展检查] 扩展目录仍然存在: ${extensionsDir}`);
+        })
+        .catch((error) => {
+          console.error(`❌ [扩展丢失] 扩展目录不存在: ${extensionsDir}`);
+          console.error(`🔍 [丢失原因] ${error.message}`);
+        });
+      
       // 停止相关的代理转发器
       if (proxyPort) {
         proxyForwarder.stopForwarder(config.id);
       }
+      
+      // 🔍 停止扩展文件监控
+      if (extensionMonitor) {
+        try {
+          extensionMonitor.stopMonitoring(config.id);
+          console.log(`🔍 已停止扩展监控 [${config.id}]`);
+        } catch (monitorError) {
+          console.warn(`⚠️ 停止扩展监控失败:`, monitorError.message);
+        }
+      }
+      
       runningBrowsers.delete(config.id);
       // 通知渲染进程更新状态
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -902,14 +980,23 @@ ipcMain.handle('start-all-browsers', async () => {
 
             if (!isRunning) {
                 try {
-                    // 构建启动参数
-                    const { args, debugPort, proxyPort } = await buildChromiumArgs(config);
-                    console.log(`配置 ${config.name} 启动参数:`, args.join(' '));
+                                    // 构建启动参数
+                const { args, debugPort, proxyPort, userDataDir } = await buildChromiumArgs(config);
+                
+                // ✅ 扩展参数已在buildChromiumArgs中动态构建
+                
+                console.log('🚀 批量启动参数:', args);
+                console.log('📁 批量启动用户数据目录:', userDataDir);
+                // 🚀 打印完整的浏览器启动命令
+                console.log(`🚀 浏览器启动命令 [${config.name}]:`);
+                console.log(`   可执行文件: ${appSettings.chromiumPath}`);
+                console.log(`   启动参数: ${args.join(' ')}`);
+                console.log(`   完整命令: ${appSettings.chromiumPath} ${args.join(' ')}`);
 
-                    const child = spawn(appSettings.chromiumPath, args, {
-                        detached: true,
-                        stdio: 'ignore'
-                    });
+                const child = spawn(appSettings.chromiumPath, args, {
+                    detached: true,
+                    stdio: 'ignore'
+                });
 
                     console.log(`配置 ${config.name} 启动成功，PID:`, child.pid);
 
@@ -924,11 +1011,39 @@ ipcMain.handle('start-all-browsers', async () => {
                     });
 
                     // 监听进程退出事件
-                    child.on('exit', () => {
+                    child.on('exit', (code, signal) => {
+                        // 🔍 浏览器进程退出日志
+                        console.warn(`🚪 [浏览器退出] 配置 "${config.name}" 的浏览器进程已退出`);
+                        console.warn(`🔍 [退出信息] 退出码: ${code}, 信号: ${signal}`);
+                        console.warn(`📁 [用户数据] 目录: ${userDataDir}`);
+                        console.warn(`📚 [调用栈] ${new Error().stack}`);
+                        
+                        // 检查扩展目录是否还存在
+                        const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+                        fs.access(extensionsDir)
+                          .then(() => {
+                            console.log(`✅ [扩展检查] 扩展目录仍然存在: ${extensionsDir}`);
+                          })
+                          .catch((error) => {
+                            console.error(`❌ [扩展丢失] 扩展目录不存在: ${extensionsDir}`);
+                            console.error(`🔍 [丢失原因] ${error.message}`);
+                          });
+                        
                         // 停止相关的代理转发器
                         if (proxyPort) {
                             proxyForwarder.stopForwarder(config.id);
                         }
+                        
+                        // 🔍 停止扩展文件监控
+                        if (extensionMonitor) {
+                          try {
+                            extensionMonitor.stopMonitoring(config.id);
+                            console.log(`🔍 已停止扩展监控 [${config.id}]`);
+                          } catch (monitorError) {
+                            console.warn(`⚠️ 停止扩展监控失败:`, monitorError.message);
+                          }
+                        }
+                        
                         runningBrowsers.delete(config.id);
                         if (mainWindow && !mainWindow.isDestroyed()) {
                             mainWindow.webContents.send('browser-process-updated');
@@ -1163,27 +1278,201 @@ async function createExtensionPreferences(userDataDir, extensionIds) {
   }
 }
 
+// 扩展数据迁移功能
+async function migrateExtensionsIfNeeded(config, oldRandomFolder, newRandomFolder, rootPath) {
+  if (!oldRandomFolder || oldRandomFolder === newRandomFolder) {
+    return { migrated: false, reason: '无需迁移' };
+  }
+
+  const oldUserDataDir = path.join(rootPath, oldRandomFolder);
+  const newUserDataDir = path.join(rootPath, newRandomFolder);
+  
+  const oldExtensionsDir = path.join(oldUserDataDir, 'Default', 'Extensions');
+  const newExtensionsDir = path.join(newUserDataDir, 'Default', 'Extensions');
+
+  try {
+    // 检查旧扩展目录是否存在
+    await fs.access(oldExtensionsDir);
+    
+    // 检查是否有扩展文件
+    const extensionIds = await fs.readdir(oldExtensionsDir);
+    const validExtensions = [];
+    
+    for (const extensionId of extensionIds) {
+      const extensionPath = path.join(oldExtensionsDir, extensionId);
+      const stat = await fs.stat(extensionPath);
+      if (stat.isDirectory()) {
+        validExtensions.push(extensionId);
+      }
+    }
+
+    if (validExtensions.length === 0) {
+      console.log(`📦 配置 "${config.name}": 旧目录无扩展文件，无需迁移`);
+      return { migrated: false, reason: '无扩展文件需要迁移' };
+    }
+
+    console.log(`🔄 开始迁移配置 "${config.name}" 的扩展数据...`);
+    console.log(`  - 源目录: ${oldExtensionsDir}`);
+    console.log(`  - 目标目录: ${newExtensionsDir}`);
+    console.log(`  - 扩展数量: ${validExtensions.length}`);
+
+    // 确保新的扩展目录存在
+    await fs.mkdir(newExtensionsDir, { recursive: true });
+
+    // 迁移每个扩展
+    const migratedExtensions = [];
+    for (const extensionId of validExtensions) {
+      try {
+        const oldExtPath = path.join(oldExtensionsDir, extensionId);
+        const newExtPath = path.join(newExtensionsDir, extensionId);
+        
+        // 使用递归复制
+        await copyDirectory(oldExtPath, newExtPath);
+        migratedExtensions.push(extensionId);
+        console.log(`  ✅ 迁移扩展: ${extensionId}`);
+      } catch (error) {
+        console.warn(`  ⚠️ 迁移扩展失败 ${extensionId}: ${error.message}`);
+      }
+    }
+
+    // 尝试迁移其他用户数据（如书签、历史记录等）
+    try {
+      const oldDefaultDir = path.join(oldUserDataDir, 'Default');
+      const newDefaultDir = path.join(newUserDataDir, 'Default');
+      
+      const filesToMigrate = ['Preferences', 'Bookmarks', 'History', 'Cookies', 'Local Storage'];
+      
+      for (const fileName of filesToMigrate) {
+        const oldFile = path.join(oldDefaultDir, fileName);
+        const newFile = path.join(newDefaultDir, fileName);
+        
+        try {
+          await fs.access(oldFile);
+          await fs.copyFile(oldFile, newFile);
+          console.log(`  📄 迁移文件: ${fileName}`);
+        } catch (error) {
+          // 文件不存在或复制失败，继续
+        }
+      }
+    } catch (error) {
+      console.warn(`  ⚠️ 迁移用户数据失败: ${error.message}`);
+    }
+
+    console.log(`✅ 扩展迁移完成: ${migratedExtensions.length}/${validExtensions.length} 个扩展`);
+    
+    return {
+      migrated: true,
+      extensionCount: migratedExtensions.length,
+      migratedExtensions: migratedExtensions,
+      oldPath: oldExtensionsDir,
+      newPath: newExtensionsDir
+    };
+
+  } catch (error) {
+    // 旧目录不存在或无法访问
+    console.log(`📦 配置 "${config.name}": 旧扩展目录不存在，无需迁移`);
+    return { migrated: false, reason: '旧目录不存在' };
+  }
+}
+
+// 递归复制目录
+async function copyDirectory(src, dest) {
+  const stat = await fs.stat(src);
+  
+  if (stat.isDirectory()) {
+    await fs.mkdir(dest, { recursive: true });
+    const files = await fs.readdir(src);
+    
+    for (const file of files) {
+      const srcFile = path.join(src, file);
+      const destFile = path.join(dest, file);
+      await copyDirectory(srcFile, destFile);
+    }
+  } else {
+    await fs.copyFile(src, dest);
+  }
+}
+
 // 计算用户数据目录（统一的逻辑）
-function calculateUserDataDir(config, appSettings) {
+async function calculateUserDataDir(config, appSettings) {
   const defaultRoot = appSettings.defaultUserDataRoot;
   const rootPath = config.userDataRoot || defaultRoot;
   
   console.log('🗂️ calculateUserDataDir调试信息:');
   console.log('  - 配置ID:', config.id);
   console.log('  - 配置名称:', config.name);
+  console.log('  - 配置的userDataRoot:', config.userDataRoot);
+  console.log('  - 默认根目录:', defaultRoot);
+  console.log('  - 实际根目录:', rootPath);
   console.log('  - 配置的randomFolder:', config.randomFolder);
   
+  // 验证根目录
+  try {
+    await fs.access(rootPath);
+    console.log('  ✅ 根目录可访问');
+  } catch (error) {
+    console.log('  ⚠️ 根目录不存在，尝试创建...');
+    try {
+      await fs.mkdir(rootPath, { recursive: true });
+      console.log('  ✅ 根目录创建成功');
+    } catch (createError) {
+      console.error('  ❌ 根目录创建失败:', createError.message);
+      throw new Error(`无法创建用户数据根目录: ${createError.message}`);
+    }
+  }
+  
+  const oldRandomFolder = config.randomFolder;
   let randomFolder = config.randomFolder;
+  let needsMigration = false;
+  
   if (!randomFolder) {
     randomFolder = `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     console.log('  ⚠️ 配置缺失randomFolder，生成新的:', randomFolder);
-    console.log('  🚨 警告：这可能导致扩展安装路径不一致！');
+    
+    // 更新配置中的randomFolder字段
+    config.randomFolder = randomFolder;
+    needsMigration = true;
+    
+    console.log('  🔄 将尝试迁移扩展数据...');
+    
+    // 尝试迁移扩展数据
+    const migrationResult = await migrateExtensionsIfNeeded(config, oldRandomFolder, randomFolder, rootPath);
+    
+    if (migrationResult.migrated) {
+      console.log(`  ✅ 扩展迁移成功: ${migrationResult.extensionCount} 个扩展已迁移`);
+    } else {
+      console.log(`  📦 扩展迁移: ${migrationResult.reason}`);
+    }
   } else {
     console.log('  ✅ 使用配置中的randomFolder:', randomFolder);
   }
   
   const fullPath = path.join(rootPath, randomFolder);
   console.log('  - 最终用户数据目录:', fullPath);
+  
+  // 验证最终路径
+  try {
+    await fs.mkdir(fullPath, { recursive: true });
+    console.log('  ✅ 用户数据目录确保存在');
+    
+    // 验证可写性
+    const testFile = path.join(fullPath, '.test-write');
+    await fs.writeFile(testFile, 'test');
+    
+    // 🗑️ 测试文件删除日志
+    console.log(`🗑️ [测试删除] 删除写权限测试文件: ${testFile}`);
+    console.log(`🔍 [删除原因] 用户数据目录写权限验证完成`);
+    console.log(`📚 [调用栈] ${new Error().stack}`);
+    
+    await fs.unlink(testFile);
+    
+    console.log(`✅ [删除完成] 测试文件已删除: ${testFile}`);
+    console.log('  ✅ 用户数据目录可写');
+    
+  } catch (error) {
+    console.error('  ❌ 用户数据目录问题:', error.message);
+    throw new Error(`用户数据目录不可用: ${error.message}`);
+  }
   
   return fullPath;
 }
@@ -1522,8 +1811,13 @@ async function buildChromiumArgs(config) {
   // 其他有用的参数
   args.push('--no-first-run');
   args.push('--no-default-browser-check');
+  
+  // ✅ 扩展优化参数 (Chromium环境)
+  args.push('--enable-extensions'); // 确保扩展系统启用
+  
+  console.log('🎯 Chromium环境：扩展系统已优化启用');
 
-  // 启用远程调试端口 (为批量任务功能)
+  // ✅ 启用远程调试端口 (Chromium完全支持)
   const debugPort = await getAvailableDebugPort();
   args.push(`--remote-debugging-port=${debugPort}`);
 
@@ -1531,20 +1825,32 @@ async function buildChromiumArgs(config) {
   // 处理用户数据目录
   let userDataDir;
   try {
-    userDataDir = calculateUserDataDir(config, appSettings);
+    userDataDir = await calculateUserDataDir(config, appSettings);
 
     // 确保目录存在
     await fs.mkdir(userDataDir, { recursive: true });
     args.push(`--user-data-dir=${userDataDir}`);
   } catch (error) {
-    console.error('创建用户数据目录失败:', error);
-    // 如果创建失败，使用临时目录
-    userDataDir = path.join(os.tmpdir(), 'chromium-' + Date.now());
-    args.push(`--user-data-dir=${userDataDir}`);
+    console.error('❌ 创建用户数据目录失败:', error);
+    
+    // 🚨 避免使用临时目录，因为会被系统自动清理导致扩展丢失
+    // 尝试使用用户数据目录下的备用路径
+    const fallbackDir = path.join(app.getPath('userData'), 'browser-fallback-' + Date.now());
+    console.warn(`⚠️ 使用备用用户数据目录: ${fallbackDir}`);
+    
+    try {
+      await fs.mkdir(fallbackDir, { recursive: true });
+      userDataDir = fallbackDir;
+      args.push(`--user-data-dir=${userDataDir}`);
+      console.log(`✅ 备用目录创建成功: ${userDataDir}`);
+    } catch (fallbackError) {
+      console.error(`❌ 备用目录也创建失败: ${fallbackError.message}`);
+      throw new Error('无法创建任何用户数据目录');
+    }
   }
 
-  // 注意：扩展通过开发者模式自动加载，无需预配置Preferences
-  // Chrome会在启动时自动扫描Extensions目录中的有效扩展
+  // ✅ 扩展通过Chrome标准Preferences文件和--load-extension参数双重启用
+  // Chrome会读取Preferences文件中的扩展配置，同时通过--load-extension确保加载
   try {
     const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
     const extensionIds = await getInstalledExtensionIds(extensionsDir);
@@ -1553,29 +1859,103 @@ async function buildChromiumArgs(config) {
       console.log(`🧩 发现 ${extensionIds.length} 个已安装扩展: ${extensionIds.join(', ')}`);
       console.log(`📁 扩展目录: ${extensionsDir}`);
       
-      // 确保浏览器以开发者模式启动，这样会自动加载Extensions目录中的扩展
+      // ✅ 启用扩展系统
       args.push('--enable-extensions');
-      args.push('--load-extension=' + extensionIds.map(id => {
-        const extensionPath = path.join(extensionsDir, id);
-        // 查找版本目录
-        try {
-          const versions = require('fs').readdirSync(extensionPath);
-          if (versions.length > 0) {
-            return path.join(extensionPath, versions[0]);
-          }
-        } catch (error) {
-          console.warn(`⚠️ 无法读取扩展版本: ${id}`);
-        }
-        return extensionPath;
-      }).filter(Boolean).join(','));
       
-      console.log(`🔧 已添加扩展加载参数`);
+      // ✅ 通过Preferences文件启用扩展
+      try {
+        await createExtensionPreferences(userDataDir, extensionIds);
+        console.log(`✅ 已通过Preferences文件启用 ${extensionIds.length} 个扩展`);
+      } catch (prefsError) {
+        console.error(`❌ 创建扩展Preferences失败: ${prefsError.message}`);
+      }
+      
+      // ✅ 动态构建--load-extension参数 (Chromium完全支持)
+      try {
+        const extensionPaths = await buildExtensionLoadPaths(extensionsDir, extensionIds);
+        if (extensionPaths.length > 0) {
+          const loadExtensionArg = `--load-extension=${extensionPaths.join(',')}`;
+          args.push(loadExtensionArg);
+          console.log(`✅ 已添加动态扩展加载参数: ${extensionPaths.length} 个扩展`);
+          console.log(`🔧 扩展路径: ${extensionPaths.join(', ')}`);
+        }
+      } catch (loadError) {
+        console.error(`❌ 构建扩展加载参数失败: ${loadError.message}`);
+      }
+      
+    } else {
+      console.log(`📦 未发现已安装的扩展`);
     }
   } catch (error) {
     console.warn('⚠️ 处理扩展失败:', error.message);
   }
 
-  return { args, debugPort, proxyPort };
+  return { args, debugPort, proxyPort, userDataDir };
+}
+
+// 构建扩展加载路径
+async function buildExtensionLoadPaths(extensionsDir, extensionIds) {
+  const extensionPaths = [];
+  
+  console.log(`🔍 开始构建扩展加载路径...`);
+  console.log(`📁 扩展目录: ${extensionsDir}`);
+  console.log(`🧩 扩展ID列表: ${extensionIds.join(', ')}`);
+  
+  for (const extensionId of extensionIds) {
+    try {
+      const extensionBaseDir = path.join(extensionsDir, extensionId);
+      
+      // 检查扩展目录是否存在
+      await fs.access(extensionBaseDir);
+      
+      // 获取版本目录
+      const versions = await fs.readdir(extensionBaseDir);
+      console.log(`📂 扩展 ${extensionId} 的版本: ${versions.join(', ')}`);
+      
+      // 验证每个版本目录
+      for (const version of versions) {
+        const versionPath = path.join(extensionBaseDir, version);
+        const manifestPath = path.join(versionPath, 'manifest.json');
+        
+        try {
+          // 检查是否为目录
+          const stat = await fs.stat(versionPath);
+          if (!stat.isDirectory()) {
+            console.log(`⚠️ 跳过非目录文件: ${versionPath}`);
+            continue;
+          }
+          
+          // 检查manifest.json是否存在
+          await fs.access(manifestPath);
+          
+          // 读取并验证manifest.json
+          const manifestContent = await fs.readFile(manifestPath, 'utf8');
+          const manifest = JSON.parse(manifestContent);
+          
+          if (manifest.name && manifest.version) {
+            extensionPaths.push(versionPath);
+            console.log(`✅ 添加扩展路径: ${versionPath}`);
+            console.log(`   扩展名称: ${manifest.name}`);
+            console.log(`   扩展版本: ${manifest.version}`);
+            break; // 只取第一个有效版本
+          } else {
+            console.warn(`⚠️ manifest.json缺少必要字段: ${manifestPath}`);
+          }
+          
+        } catch (versionError) {
+          console.warn(`⚠️ 验证扩展版本失败 ${versionPath}: ${versionError.message}`);
+          continue;
+        }
+      }
+      
+    } catch (extensionError) {
+      console.warn(`⚠️ 处理扩展失败 ${extensionId}: ${extensionError.message}`);
+      continue;
+    }
+  }
+  
+  console.log(`📊 构建完成，有效扩展路径数量: ${extensionPaths.length}`);
+  return extensionPaths;
 }
 
 
@@ -1626,6 +2006,347 @@ ipcMain.handle('reset-app-settings', async () => {
         return result;
     } catch (error) {
         return { success: false, error: error.message };
+    }
+});
+
+// 紧急恢复配置（从备份文件）
+ipcMain.handle('emergency-restore-configs', async () => {
+    try {
+        console.log('🚨 开始紧急恢复配置...');
+        
+        // 查找备份文件
+        const backupFiles = await fs.readdir(__dirname);
+        const configBackup = backupFiles.find(file => 
+            file.startsWith('browser-configs-backup-') && file.endsWith('.json')
+        );
+        
+        if (!configBackup) {
+            return { success: false, error: '未找到配置备份文件' };
+        }
+        
+        console.log(`📂 找到备份文件: ${configBackup}`);
+        
+        // 读取备份配置
+        const backupPath = path.join(__dirname, configBackup);
+        const backupData = await fs.readFile(backupPath, 'utf8');
+        const backupConfigs = JSON.parse(backupData);
+        
+        console.log(`📋 备份中有 ${backupConfigs.length} 个配置`);
+        
+        // 验证和修复每个配置的路径
+        let fixedConfigs = 0;
+        for (const config of backupConfigs) {
+            // 确保每个配置都有 randomFolder
+            if (!config.randomFolder) {
+                config.randomFolder = `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+                console.log(`🔧 为配置 "${config.name}" 添加 randomFolder: ${config.randomFolder}`);
+                fixedConfigs++;
+            }
+            
+            // 如果 userDataRoot 为空，确保使用默认值
+            if (!config.userDataRoot) {
+                config.userDataRoot = appSettings.defaultUserDataRoot;
+                console.log(`🔧 为配置 "${config.name}" 设置默认 userDataRoot`);
+                fixedConfigs++;
+            }
+            
+            // 验证路径
+            try {
+                const userDataDir = await calculateUserDataDir(config, appSettings);
+                console.log(`✅ 配置 "${config.name}" 路径验证成功: ${userDataDir}`);
+            } catch (error) {
+                console.warn(`⚠️ 配置 "${config.name}" 路径验证失败: ${error.message}`);
+            }
+        }
+        
+        // 保存修复后的配置
+        await fs.writeFile(CONFIG_FILE, JSON.stringify(backupConfigs, null, 2));
+        console.log(`💾 已保存修复后的配置到: ${CONFIG_FILE}`);
+        
+        return {
+            success: true,
+            message: `成功恢复 ${backupConfigs.length} 个配置，修复了 ${fixedConfigs} 个问题`,
+            configCount: backupConfigs.length,
+            fixedCount: fixedConfigs
+        };
+        
+    } catch (error) {
+        console.error('❌ 紧急恢复失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 修复扩展文件丢失问题
+ipcMain.handle('repair-missing-extensions', async (event, { configIds, extensionIds }) => {
+    try {
+        console.log('🔧 开始修复丢失的扩展文件...');
+        
+        const repairResults = [];
+        
+        for (const configId of configIds) {
+            try {
+                // 获取配置信息
+                const configs = await loadConfigs();
+                const config = configs.find(c => c.id === configId);
+                
+                if (!config) {
+                    repairResults.push({
+                        success: false,
+                        configId,
+                        configName: configId,
+                        error: '配置不存在'
+                    });
+                    continue;
+                }
+                
+                // 计算用户数据目录
+                const userDataDir = await calculateUserDataDir(config, appSettings);
+                
+                console.log(`🔧 修复配置 "${config.name}" 的扩展...`);
+                console.log(`📁 用户数据目录: ${userDataDir}`);
+                
+                // 强制重新安装扩展
+                const result = await extensionManager.installExtensionsToConfig(
+                    configId, 
+                    userDataDir, 
+                    extensionIds, 
+                    true // 强制重新安装
+                );
+                
+                repairResults.push({
+                    success: result.success,
+                    configId,
+                    configName: config.name,
+                    result: result,
+                    userDataDir: userDataDir
+                });
+                
+            } catch (error) {
+                console.error(`❌ 修复配置 ${configId} 失败:`, error);
+                repairResults.push({
+                    success: false,
+                    configId,
+                    error: error.message
+                });
+            }
+        }
+        
+        const successCount = repairResults.filter(r => r.success).length;
+        const totalCount = repairResults.length;
+        
+        return {
+            success: successCount > 0,
+            message: `扩展修复完成: 成功 ${successCount}/${totalCount} 个配置`,
+            results: repairResults,
+            summary: {
+                total: totalCount,
+                successful: successCount,
+                failed: totalCount - successCount
+            }
+        };
+        
+    } catch (error) {
+        console.error('❌ 扩展修复失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 扩展文件监控控制
+ipcMain.handle('start-extension-monitoring', async (event, { configId, userDataDir, configName }) => {
+    try {
+        if (!extensionMonitor) {
+            return { success: false, error: '扩展监控器未初始化' };
+        }
+
+        await extensionMonitor.startMonitoring(configId, userDataDir, configName);
+        return { success: true, message: `扩展监控已启动: ${configName}` };
+    } catch (error) {
+        console.error('启动扩展监控失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('stop-extension-monitoring', async (event, { configId }) => {
+    try {
+        if (!extensionMonitor) {
+            return { success: false, error: '扩展监控器未初始化' };
+        }
+
+        await extensionMonitor.stopMonitoring(configId);
+        return { success: true, message: '扩展监控已停止' };
+    } catch (error) {
+        console.error('停止扩展监控失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('get-extension-monitor-stats', async () => {
+    try {
+        if (!extensionMonitor) {
+            return { success: false, error: '扩展监控器未初始化' };
+        }
+
+        const stats = extensionMonitor.getStats();
+        return { success: true, stats };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('manual-extension-backup', async (event, { configId, userDataDir, configName }) => {
+    try {
+        if (!extensionMonitor) {
+            return { success: false, error: '扩展监控器未初始化' };
+        }
+
+        await extensionMonitor.manualBackup(configId, userDataDir, configName);
+        return { success: true, message: `扩展备份已创建: ${configName}` };
+    } catch (error) {
+        console.error('创建扩展备份失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 快速诊断和修复
+ipcMain.handle('quick-diagnose-and-fix', async () => {
+    try {
+        console.log('🔍 开始快速诊断...');
+        
+        const issues = [];
+        const fixes = [];
+        
+        // 1. 检查配置文件
+        try {
+            await fs.access(CONFIG_FILE);
+            console.log('✅ 配置文件存在');
+        } catch (error) {
+            issues.push('配置文件不存在');
+            console.log('⚠️ 配置文件不存在，尝试恢复...');
+            
+            const restoreResult = await ipcMain.handle('emergency-restore-configs')();
+            if (restoreResult.success) {
+                fixes.push('已从备份恢复配置文件');
+            } else {
+                issues.push('无法恢复配置文件: ' + restoreResult.error);
+            }
+        }
+        
+        // 2. 检查设置文件
+        try {
+            await fs.access(SETTINGS_FILE);
+            console.log('✅ 设置文件存在');
+        } catch (error) {
+            issues.push('设置文件不存在');
+            console.log('⚠️ 设置文件不存在，创建默认设置...');
+            
+            await saveAppSettings();
+            fixes.push('已创建默认设置文件');
+        }
+        
+        // 3. 检查默认用户数据根目录
+        try {
+            await fs.mkdir(appSettings.defaultUserDataRoot, { recursive: true });
+            console.log('✅ 默认用户数据根目录可用');
+        } catch (error) {
+            issues.push(`默认用户数据根目录问题: ${error.message}`);
+        }
+        
+        // 4. 检查浏览器可执行文件
+        if (appSettings.chromiumPath) {
+            try {
+                await fs.access(appSettings.chromiumPath);
+                console.log('✅ 浏览器可执行文件存在');
+            } catch (error) {
+                issues.push('浏览器可执行文件不存在');
+                console.log('⚠️ 浏览器可执行文件不存在');
+            }
+        }
+        
+        return {
+            success: true,
+            issues: issues,
+            fixes: fixes,
+            hasIssues: issues.length > 0
+        };
+        
+    } catch (error) {
+        console.error('❌ 快速诊断失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 重新安装浏览器
+ipcMain.handle('reinstall-browser', async () => {
+    try {
+        console.log('🔄 开始重新安装 Chromium 浏览器...');
+        
+        if (!browserDownloader) {
+            browserDownloader = new BrowserDownloader();
+        }
+
+        // 检查当前安装状态
+        const currentStatus = await browserDownloader.checkInstallation();
+        
+        if (currentStatus.installed) {
+            console.log(`📦 当前已安装浏览器: ${currentStatus.executablePath}`);
+            console.log('🗑️ 将删除现有安装并重新下载...');
+            
+            try {
+                // 尝试删除现有安装目录
+                const installDir = path.dirname(currentStatus.executablePath);
+                const parentDir = path.dirname(installDir);
+                
+                // 安全检查：确保不是系统目录
+                if (installDir.includes('ChromiumManager') || installDir.includes('chromium')) {
+                    // 🗑️ 浏览器安装目录删除日志
+                    console.warn(`🗑️ [浏览器删除] 删除现有浏览器安装目录: ${parentDir}`);
+                    console.warn(`🔍 [删除原因] 重新安装浏览器，清理旧版本`);
+                    console.warn(`📚 [调用栈] ${new Error().stack}`);
+                    console.warn(`⚠️ [影响范围] 整个Chromium安装目录将被删除`);
+                    console.warn(`🛡️ [安全检查] 已通过路径验证: ${installDir}`);
+                    
+                    await fs.rmdir(parentDir, { recursive: true, force: true });
+                    
+                    console.warn(`✅ [删除完成] 旧浏览器安装目录已删除: ${parentDir}`);
+                }
+            } catch (deleteError) {
+                console.warn(`❌ [删除失败] 删除旧安装失败，继续安装: ${deleteError.message}`);
+                console.warn(`📚 [错误调用栈] ${new Error().stack}`);
+            }
+        }
+
+        // 执行重新下载和安装
+        const result = await browserDownloader.downloadAndInstall();
+        
+        if (result.success) {
+            console.log('✅ Chromium 浏览器重新安装成功');
+            
+            // 更新应用设置中的浏览器路径
+            if (result.executablePath) {
+                appSettings.chromiumPath = result.executablePath;
+                await saveAppSettings();
+                console.log(`🔧 已更新浏览器路径: ${result.executablePath}`);
+            }
+            
+            return {
+                success: true,
+                message: 'Chromium 浏览器重新安装成功',
+                executablePath: result.executablePath,
+                installPath: result.installPath
+            };
+        } else {
+            return {
+                success: false,
+                error: result.error || '重新安装失败'
+            };
+        }
+        
+    } catch (error) {
+        console.error('❌ 重新安装浏览器失败:', error);
+        return {
+            success: false,
+            error: `重新安装失败: ${error.message}`
+        };
     }
 });
 
@@ -2616,11 +3337,11 @@ ipcMain.handle('install-extensions-to-config', async (event, { configId, extensi
             console.log(`🎯 使用运行中浏览器的实际目录: ${userDataDir}`);
         } else {
             // 浏览器未运行，使用配置计算的目录
-            userDataDir = calculateUserDataDir(config, appSettings);
+            userDataDir = await calculateUserDataDir(config, appSettings);
             console.log(`📁 使用配置计算的目录: ${userDataDir}`);
         }
         
-        const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds);
+                    const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds, false);
         return result;
         
     } catch (error) {
@@ -2684,17 +3405,17 @@ ipcMain.handle('batch-install-extensions', async (event, { configIds, extensionI
                     console.log(`✅ 成功获取运行中浏览器的实际目录: ${userDataDir}`);
                 } catch (error) {
                     console.warn(`⚠️ 无法获取运行中浏览器目录，使用配置计算的目录: ${error.message}`);
-                    userDataDir = calculateUserDataDir(config, appSettings);
+                    userDataDir = await calculateUserDataDir(config, appSettings);
                     console.log(`📁 回退到配置计算目录: ${userDataDir}`);
                 }
             } else {
                 // 浏览器未运行，使用配置计算的目录
-                userDataDir = calculateUserDataDir(config, appSettings);
+                userDataDir = await calculateUserDataDir(config, appSettings);
                 console.log(`📁 浏览器未运行，使用配置计算的目录: ${userDataDir}`);
             }
             
             console.log(`🎯 最终安装路径: ${userDataDir}`);
-            const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds);
+            const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds, false);
             
             results.push({
                 configId,
@@ -3050,3 +3771,98 @@ async function installExtensionViaDevTools(webSocketUrl, extensionPath, extensio
         });
     });
 }
+
+// 检查扩展实际安装路径
+ipcMain.handle('check-extension-paths', async (event, configId) => {
+  try {
+    // 读取配置
+    const configs = await loadConfigs();
+    const config = configs.find(c => c.id === configId);
+    
+    if (!config) {
+      return { success: false, error: '配置不存在' };
+    }
+    
+    // 计算用户数据目录
+    const userDataDir = await calculateUserDataDir(config, appSettings);
+    const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+    
+    console.log(`🔍 检查配置 "${config.name}" 的扩展路径...`);
+    console.log(`📁 用户数据目录: ${userDataDir}`);
+    console.log(`🧩 扩展目录: ${extensionsDir}`);
+    
+    // 检查扩展目录是否存在
+    let extensionsExist = false;
+    try {
+      await fs.access(extensionsDir);
+      extensionsExist = true;
+    } catch (error) {
+      console.log(`⚠️ 扩展目录不存在: ${extensionsDir}`);
+    }
+    
+    const extensionPaths = [];
+    
+    if (extensionsExist) {
+      try {
+        // 获取所有扩展ID
+        const extensionIds = await getInstalledExtensionIds(extensionsDir);
+        
+        for (const extensionId of extensionIds) {
+          const extensionBaseDir = path.join(extensionsDir, extensionId);
+          
+          try {
+            // 获取版本目录
+            const versions = await fs.readdir(extensionBaseDir);
+            
+            for (const version of versions) {
+              const versionPath = path.join(extensionBaseDir, version);
+              const manifestPath = path.join(versionPath, 'manifest.json');
+              
+              try {
+                // 检查是否为目录且包含manifest.json
+                const stat = await fs.stat(versionPath);
+                if (stat.isDirectory()) {
+                  await fs.access(manifestPath);
+                  
+                  // 读取manifest.json获取扩展信息
+                  const manifestContent = await fs.readFile(manifestPath, 'utf8');
+                  const manifest = JSON.parse(manifestContent);
+                  
+                  extensionPaths.push({
+                    extensionId,
+                    version,
+                    path: versionPath,
+                    name: manifest.name || '未知扩展',
+                    manifestPath,
+                    manifest
+                  });
+                }
+              } catch (versionError) {
+                console.warn(`⚠️ 版本目录验证失败 ${versionPath}: ${versionError.message}`);
+              }
+            }
+          } catch (extensionError) {
+            console.warn(`⚠️ 扩展目录读取失败 ${extensionId}: ${extensionError.message}`);
+          }
+        }
+      } catch (readError) {
+        console.error(`❌ 读取扩展目录失败: ${readError.message}`);
+      }
+    }
+    
+    return {
+      success: true,
+      configId,
+      configName: config.name,
+      userDataDir,
+      extensionsDir,
+      extensionsExist,
+      extensionCount: extensionPaths.length,
+      extensions: extensionPaths
+    };
+    
+  } catch (error) {
+    console.error('检查扩展路径失败:', error);
+    return { success: false, error: error.message };
+  }
+});

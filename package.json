@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
+    "chokidar": "^4.0.3",
     "chrome-remote-interface": "^0.33.3",
     "http-proxy-agent": "^7.0.2",
     "puppeteer-core": "^24.15.0",
