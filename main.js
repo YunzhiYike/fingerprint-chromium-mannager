@@ -10,14 +10,99 @@ const NativeSyncManager = require('./native-sync-manager');
 const ChromeExtensionManager = require('./chrome-extension-manager');
 const { log } = require('console');
 
-// 配置文件路径
-const CONFIG_FILE = path.join(__dirname, 'browser-configs.json');
-const SETTINGS_FILE = path.join(__dirname, 'app-settings.json');
+// 配置文件路径 - 使用用户数据目录避免打包后只读问题
+let CONFIG_FILE;
+let SETTINGS_FILE;
 
-// 默认设置
+// 初始化配置文件路径
+function initializeConfigPaths() {
+    const userData = app.getPath('userData');
+    CONFIG_FILE = path.join(userData, 'browser-configs.json');
+    SETTINGS_FILE = path.join(userData, 'app-settings.json');
+    
+    console.log(`🔍 当前平台: ${process.platform}`);
+    console.log(`📂 用户数据目录: ${userData}`);
+    console.log(`📁 配置文件路径: ${CONFIG_FILE}`);
+    console.log(`⚙️ 设置文件路径: ${SETTINGS_FILE}`);
+    
+    // 确保用户数据目录存在
+    const fs = require('fs');
+    try {
+        if (!fs.existsSync(userData)) {
+            fs.mkdirSync(userData, { recursive: true });
+            console.log(`✅ 已创建用户数据目录: ${userData}`);
+        }
+    } catch (error) {
+        console.error(`❌ 创建用户数据目录失败: ${error.message}`);
+    }
+}
+
+// 迁移旧配置文件到用户数据目录
+async function migrateOldConfigFiles() {
+    try {
+        const fs = require('fs').promises;
+        
+        // 旧文件路径（开发环境中的位置）
+        const oldConfigFile = path.join(__dirname, 'browser-configs.json');
+        const oldSettingsFile = path.join(__dirname, 'app-settings.json');
+        
+        // 检查并迁移配置文件
+        try {
+            await fs.access(oldConfigFile);
+            const configExists = await fs.access(CONFIG_FILE).then(() => true).catch(() => false);
+            
+            if (!configExists) {
+                const oldConfig = await fs.readFile(oldConfigFile, 'utf8');
+                await fs.writeFile(CONFIG_FILE, oldConfig);
+                console.log(`✅ 已迁移配置文件: ${oldConfigFile} -> ${CONFIG_FILE}`);
+                
+                // 可选：删除旧文件（在asar包外的情况下）
+                try {
+                    await fs.unlink(oldConfigFile);
+                    console.log(`🗑️ 已删除旧配置文件: ${oldConfigFile}`);
+                } catch (error) {
+                    // 忽略删除错误（可能在asar包内）
+                }
+            }
+        } catch (error) {
+            // 旧配置文件不存在，忽略
+        }
+        
+        // 检查并迁移设置文件
+        try {
+            await fs.access(oldSettingsFile);
+            const settingsExists = await fs.access(SETTINGS_FILE).then(() => true).catch(() => false);
+            
+            if (!settingsExists) {
+                const oldSettings = await fs.readFile(oldSettingsFile, 'utf8');
+                await fs.writeFile(SETTINGS_FILE, oldSettings);
+                console.log(`✅ 已迁移设置文件: ${oldSettingsFile} -> ${SETTINGS_FILE}`);
+                
+                // 可选：删除旧文件
+                try {
+                    await fs.unlink(oldSettingsFile);
+                    console.log(`🗑️ 已删除旧设置文件: ${oldSettingsFile}`);
+                } catch (error) {
+                    // 忽略删除错误
+                }
+            }
+        } catch (error) {
+            // 旧设置文件不存在，忽略
+        }
+        
+    } catch (error) {
+        console.warn(`⚠️ 迁移配置文件时出现错误: ${error.message}`);
+    }
+}
+
+// 默认设置 - 根据平台自动选择
 const DEFAULT_SETTINGS = {
-  chromiumPath: '/Applications/Chromium 2.app/Contents/MacOS/Chromium',
-  defaultUserDataRoot: path.join(os.homedir(), 'Library', 'Application Support', 'ChromiumManager'),
+  chromiumPath: process.platform === 'win32' 
+    ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    : '/Applications/Chromium 2.app/Contents/MacOS/Chromium',
+  defaultUserDataRoot: process.platform === 'win32'
+    ? path.join(os.homedir(), 'AppData', 'Local', 'ChromiumManager')
+    : path.join(os.homedir(), 'Library', 'Application Support', 'ChromiumManager'),
   autoCleanup: true,
   maxRunningBrowsers: 10
 };
@@ -105,6 +190,12 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+    // 🚀 初始化配置文件路径
+    initializeConfigPaths();
+    
+    // 🔄 迁移旧配置文件（如果存在）
+    await migrateOldConfigFiles();
+    
     await loadAppSettings();
     createWindow();
 });

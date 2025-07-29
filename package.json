@@ -59,7 +59,10 @@
       "index.html",
       "styles.css",
       "package.json",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "ultimate-sync-manager.js",
+      "native-sync-manager.js",
+      "chrome-extension-manager.js"
     ],
     "extraFiles": [
       {
