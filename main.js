@@ -45,6 +45,7 @@ async function migrateOldConfigFiles() {
         // 旧文件路径（开发环境中的位置）
         const oldConfigFile = path.join(__dirname, 'browser-configs.json');
         const oldSettingsFile = path.join(__dirname, 'app-settings.json');
+        const oldExtensionsDir = path.join(__dirname, 'chrome-extensions');
         
         // 检查并迁移配置文件
         try {
@@ -90,6 +91,45 @@ async function migrateOldConfigFiles() {
             // 旧设置文件不存在，忽略
         }
         
+        // 🔄 迁移扩展目录
+        try {
+            await fs.access(oldExtensionsDir);
+            const userData = app.getPath('userData');
+            const newExtensionsDir = path.join(userData, 'chrome-extensions');
+            
+            // 检查新目录是否已存在
+            const newDirExists = await fs.access(newExtensionsDir).then(() => true).catch(() => false);
+            
+            if (!newDirExists) {
+                // 创建新目录
+                await fs.mkdir(newExtensionsDir, { recursive: true });
+                
+                // 获取旧目录中的所有文件
+                const files = await fs.readdir(oldExtensionsDir);
+                const crxFiles = files.filter(file => file.endsWith('.crx'));
+                
+                if (crxFiles.length > 0) {
+                    console.log(`🔄 开始迁移 ${crxFiles.length} 个扩展文件...`);
+                    
+                    for (const file of crxFiles) {
+                        const oldFile = path.join(oldExtensionsDir, file);
+                        const newFile = path.join(newExtensionsDir, file);
+                        
+                        try {
+                            await fs.copyFile(oldFile, newFile);
+                            console.log(`✅ 已迁移扩展: ${file}`);
+                        } catch (copyError) {
+                            console.warn(`⚠️ 迁移扩展失败 ${file}: ${copyError.message}`);
+                        }
+                    }
+                    
+                    console.log(`📦 扩展迁移完成: ${oldExtensionsDir} -> ${newExtensionsDir}`);
+                }
+            }
+        } catch (error) {
+            // 旧扩展目录不存在，忽略
+        }
+        
     } catch (error) {
         console.warn(`⚠️ 迁移配置文件时出现错误: ${error.message}`);
     }
@@ -120,8 +160,8 @@ const proxyForwarder = new ProxyForwarder();
 // 浏览器下载器实例
 const browserDownloader = new BrowserDownloader();
 
-// Chrome扩展管理器实例
-const extensionManager = new ChromeExtensionManager();
+// Chrome扩展管理器实例 - 在应用初始化后创建
+let extensionManager;
 
 // 获取可用的调试端口
 async function getAvailableDebugPort() {
@@ -195,6 +235,23 @@ app.whenReady().then(async () => {
     
     // 🔄 迁移旧配置文件（如果存在）
     await migrateOldConfigFiles();
+    
+    // 📦 创建扩展管理器实例（使用用户数据目录）
+    const userData = app.getPath('userData');
+    try {
+        extensionManager = new ChromeExtensionManager(userData);
+        console.log(`📦 扩展管理器已初始化，目录: ${userData}/chrome-extensions`);
+        console.log(`🔍 Windows平台路径验证: ${process.platform === 'win32' ? '✅ 使用用户数据目录' : '✅ 使用标准路径'}`);
+    } catch (error) {
+        console.error(`❌ 扩展管理器初始化失败: ${error.message}`);
+        // 创建一个空的扩展管理器实例作为回退
+        extensionManager = {
+            downloadExtension: () => ({ success: false, error: '扩展管理器未初始化' }),
+            installExtensionsToConfig: () => ({ success: false, error: '扩展管理器未初始化' }),
+            getDownloadedExtensions: () => [],
+            batchDownloadExtensions: () => ({ success: false, error: '扩展管理器未初始化' })
+        };
+    }
     
     await loadAppSettings();
     createWindow();
@@ -2569,7 +2626,11 @@ async function installExtensionsToRunningBrowser(browserInfo, extensionIds) {
         
         for (const extensionId of extensionIds) {
             try {
-                const extensionPath = path.join(__dirname, 'chrome-extensions', `${extensionId}.crx`);
+                if (!extensionManager || !extensionManager.extensionsDir) {
+                    throw new Error('扩展管理器未初始化');
+                }
+                
+                const extensionPath = path.join(extensionManager.extensionsDir, `${extensionId}.crx`);
                 
                 // 检查扩展文件是否存在
                 const fs = require('fs').promises;

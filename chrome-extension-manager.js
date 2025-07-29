@@ -7,8 +7,10 @@ const { exec } = require('child_process');
 const execAsync = promisify(exec);
 
 class ChromeExtensionManager {
-  constructor() {
-    this.extensionsDir = path.join(__dirname, 'chrome-extensions');
+  constructor(userDataDir = null) {
+    // 使用传入的用户数据目录，避免Windows打包后的asar路径问题
+    const baseDir = userDataDir || __dirname;
+    this.extensionsDir = path.join(baseDir, 'chrome-extensions');
     this.initializeExtensionsDir();
   }
 
@@ -17,6 +19,8 @@ class ChromeExtensionManager {
     try {
       await fs.mkdir(this.extensionsDir, { recursive: true });
       console.log(`📁 扩展目录已创建: ${this.extensionsDir}`);
+      console.log(`🔍 扩展目录平台检查: ${process.platform === 'win32' ? 'Windows' : 'Unix-like'}`);
+      console.log(`📂 目录路径类型: ${this.extensionsDir.includes('app.asar') ? '❌ asar包内(错误)' : '✅ 用户数据目录(正确)'}`);
     } catch (error) {
       console.error('❌ 创建扩展目录失败:', error.message);
       throw error;
