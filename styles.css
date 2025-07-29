@@ -2688,3 +2688,876 @@ body {
     text-align: center;
     padding: 40px;
 }
+
+/* ========================== Chrome扩展管理样式 ========================== */
+
+.extensions-page {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ffffff;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.extensions-header {
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    color: white;
+    padding: 20px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
+}
+
+.extensions-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #f8f9fa;
+}
+
+.extensions-tabs {
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.tab-nav {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 15px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6c757d;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.tab-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.tab-btn.active {
+    background: #4CAF50;
+    color: white;
+    box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
+}
+
+.tab-content {
+    display: none;
+    padding: 20px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.extensions-filters {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.filter-label {
+    font-weight: 500;
+    color: #495057;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    background: white;
+    color: #495057;
+    min-width: 120px;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    border: 1px solid #ced4da;
+    background: white;
+    color: #495057;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filter-btn:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+}
+
+.extensions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.extension-card {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.extension-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #4CAF50;
+}
+
+.extension-card.downloaded {
+    border-color: #28a745;
+    background: #f8fff9;
+}
+
+.extension-card.custom {
+    border-color: #ffc107;
+    background: #fffbf0;
+}
+
+.extension-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.extension-checkbox {
+    margin-top: 4px;
+    cursor: pointer;
+}
+
+.extension-info {
+    flex: 1;
+}
+
+.extension-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 4px 0;
+    line-height: 1.2;
+}
+
+.extension-category {
+    display: inline-block;
+    background: #e9ecef;
+    color: #6c757d;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.extension-status {
+    display: inline-block;
+    background: #d4edda;
+    color: #155724;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.extension-body {
+    margin-bottom: 12px;
+}
+
+.extension-description {
+    color: #6c757d;
+    font-size: 13px;
+    line-height: 1.4;
+    margin-bottom: 8px;
+}
+
+.extension-id, .extension-file {
+    font-size: 11px;
+    color: #9ca3af;
+    font-family: monospace;
+    background: #f8f9fa;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.extension-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.action-btn.download {
+    background: #007bff;
+    color: white;
+}
+
+.action-btn.download:hover {
+    background: #0056b3;
+}
+
+.action-btn.install {
+    background: #28a745;
+    color: white;
+}
+
+.action-btn.install:hover {
+    background: #1e7e34;
+}
+
+.action-btn.remove {
+    background: #dc3545;
+    color: white;
+}
+
+.action-btn.remove:hover {
+    background: #c82333;
+}
+
+.downloaded-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.download-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #495057;
+    font-weight: 500;
+}
+
+.custom-extension-form {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 6px;
+    color: #495057;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #4CAF50;
+    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.form-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-btn.primary {
+    background: #4CAF50;
+    color: white;
+}
+
+.form-btn.primary:hover {
+    background: #45a049;
+}
+
+.installation-panel, .progress-panel, .log-panel {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.panel-header {
+    background: #f8f9fa;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.panel-body {
+    padding: 20px;
+}
+
+.config-selection {
+    margin-bottom: 20px;
+}
+
+.config-checkboxes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    background: #fafafa;
+}
+
+.config-checkbox-item {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.config-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.checkbox-mark {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #ced4da;
+    border-radius: 3px;
+    background: white;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.config-checkbox input[type="checkbox"] {
+    display: none;
+}
+
+.config-checkbox input[type="checkbox"]:checked + .checkbox-mark {
+    background: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.config-checkbox input[type="checkbox"]:checked + .checkbox-mark::after {
+    content: '✓';
+    position: absolute;
+    top: -2px;
+    left: 2px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.config-name {
+    color: #495057;
+    font-weight: 500;
+}
+
+.install-actions {
+    text-align: center;
+}
+
+.install-btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.install-btn.primary {
+    background: #4CAF50;
+    color: white;
+}
+
+.install-btn.primary:hover {
+    background: #45a049;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+}
+
+.progress-header {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+    color: white;
+    padding: 16px 20px;
+}
+
+.progress-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.progress-body {
+    padding: 20px;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #45a049 100%);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-details {
+    text-align: center;
+    color: #6c757d;
+    font-size: 13px;
+}
+
+.operation-log {
+    max-height: 300px;
+    overflow-y: auto;
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.log-entry {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border-left: 3px solid transparent;
+    background: white;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.log-entry.success {
+    border-left-color: #28a745;
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+.log-entry.error {
+    border-left-color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+.log-entry.warning {
+    border-left-color: #ffc107;
+    background-color: rgba(255, 193, 7, 0.05);
+}
+
+.log-entry.info {
+    border-left-color: #17a2b8;
+    background-color: rgba(23, 162, 184, 0.05);
+}
+
+.log-time {
+    color: #6c757d;
+    font-size: 10px;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.log-message {
+    flex: 1;
+    color: #495057;
+}
+
+.clear-btn {
+    padding: 6px 12px;
+    border: 1px solid #ced4da;
+    background: white;
+    color: #6c757d;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.clear-btn:hover {
+    background: #f8f9fa;
+    color: #495057;
+}
+
+/* 安装选项卡样式 */
+.installation-tabs {
+    margin-top: 20px;
+}
+
+.install-tab-nav {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 8px 8px 0 0;
+}
+
+.install-tab-btn {
+    flex: 1;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #6c757d;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.install-tab-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.install-tab-btn.active {
+    background: #4CAF50;
+    color: white;
+    box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
+}
+
+.install-tab-content {
+    display: none;
+    padding: 20px;
+    background: white;
+    border-radius: 0 0 8px 8px;
+}
+
+.install-tab-content.active {
+    display: block;
+}
+
+/* 运行中浏览器样式 */
+.running-browsers-info {
+    margin-bottom: 20px;
+}
+
+.info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #e3f2fd;
+    border-radius: 6px;
+    border-left: 4px solid #2196F3;
+}
+
+.info-text {
+    color: #1565C0;
+    font-weight: 500;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.refresh-btn {
+    padding: 6px 12px;
+    border: 1px solid #2196F3;
+    background: white;
+    color: #2196F3;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.refresh-btn:hover {
+    background: #2196F3;
+    color: white;
+}
+
+.running-browsers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.running-browser-card {
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 16px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.running-browser-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-color: #2196F3;
+}
+
+.browser-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.browser-checkbox {
+    margin-top: 4px;
+    cursor: pointer;
+    transform: scale(1.2);
+}
+
+.browser-info {
+    flex: 1;
+}
+
+.browser-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+}
+
+.browser-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #28a745;
+    font-weight: 500;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #28a745;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.browser-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.action-label {
+    font-size: 11px;
+    color: #9ca3af;
+    font-family: monospace;
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.browser-body {
+    border-top: 1px solid #f1f3f4;
+    padding-top: 12px;
+}
+
+.browser-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.detail-item i {
+    width: 14px;
+    color: #9ca3af;
+}
+
+/* 无运行中浏览器样式 */
+.no-running-browsers {
+    text-align: center;
+    padding: 40px 20px;
+    color: #6c757d;
+}
+
+.no-browsers-icon {
+    font-size: 48px;
+    color: #ffc107;
+    margin-bottom: 16px;
+}
+
+.no-browsers-text h4 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #495057;
+    margin: 0 0 8px 0;
+}
+
+.no-browsers-text p {
+    font-size: 14px;
+    color: #6c757d;
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* 安装按钮样式增强 */
+.install-btn.success {
+    background: #28a745;
+    color: white;
+}
+
+.install-btn.success:hover {
+    background: #218838;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .extensions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .config-checkboxes {
+        grid-template-columns: 1fr;
+    }
+    
+    .running-browsers-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .extensions-filters {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .filter-group {
+        justify-content: space-between;
+    }
+    
+    .info-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .install-tab-nav {
+        flex-direction: column;
+    }
+}

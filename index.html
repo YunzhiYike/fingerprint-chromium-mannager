@@ -51,6 +51,10 @@
                         <i class="fas fa-tasks"></i>
                         <span>批量任务</span>
                     </button>
+                    <button id="extensionsBtn" class="el-button el-button--info el-button--round">
+                        <i class="fas fa-puzzle-piece"></i>
+                        <span>扩展管理</span>
+                    </button>
                     <button id="refreshBtn" class="el-button el-button--success el-button--round">
                         <i class="fas fa-sync-alt"></i>
                         <span>刷新</span>
@@ -654,6 +658,225 @@
                                             <!-- 任务执行日志 -->
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="extensionsPage" class="extensions-page" style="display: none;">
+                    <div class="extensions-header">
+                        <div class="task-title-section">
+                            <h3 class="task-title">
+                                <i class="fas fa-puzzle-piece"></i>
+                                Chrome扩展管理
+                            </h3>
+                            <span class="task-subtitle">批量下载和安装Chrome扩展，支持集群控制</span>
+                        </div>
+                        <div class="task-actions">
+                            <button id="downloadSelectedBtn" class="header-btn primary">
+                                <i class="fas fa-download"></i>
+                                <span>下载选中</span>
+                            </button>
+                            <button id="installSelectedBtn" class="header-btn success">
+                                <i class="fas fa-plus"></i>
+                                <span>安装到配置</span>
+                            </button>
+                            <button id="refreshExtensionsBtn" class="header-btn warning">
+                                <i class="fas fa-sync"></i>
+                                <span>刷新列表</span>
+                            </button>
+                            <button id="closeExtensionsBtn" class="header-btn default">
+                                <i class="fas fa-times"></i>
+                                <span>关闭</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="extensions-content">
+                        <div class="extensions-tabs">
+                            <div class="tab-nav">
+                                <button class="tab-btn active" data-tab="recommended">
+                                    <i class="fas fa-star"></i>
+                                    推荐扩展
+                                </button>
+                                <button class="tab-btn" data-tab="downloaded">
+                                    <i class="fas fa-download"></i>
+                                    已下载
+                                </button>
+                                <button class="tab-btn" data-tab="custom">
+                                    <i class="fas fa-edit"></i>
+                                    自定义
+                                </button>
+                            </div>
+                            
+                            <div id="recommendedTab" class="tab-content active">
+                                <div class="extensions-filters">
+                                    <div class="filter-group">
+                                        <label class="filter-label">分类筛选:</label>
+                                        <select id="categoryFilter" class="filter-select">
+                                            <option value="">全部分类</option>
+                                            <option value="安全隐私">安全隐私</option>
+                                            <option value="开发工具">开发工具</option>
+                                            <option value="效率工具">效率工具</option>
+                                            <option value="系统工具">系统工具</option>
+                                        </select>
+                                    </div>
+                                    <div class="filter-group">
+                                        <button id="selectAllExtensionsBtn" class="filter-btn">
+                                            <i class="fas fa-check-square"></i>
+                                            全选
+                                        </button>
+                                        <button id="unselectAllExtensionsBtn" class="filter-btn">
+                                            <i class="fas fa-square"></i>
+                                            取消全选
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div id="extensionsList" class="extensions-grid">
+                                    <!-- 动态加载的扩展列表 -->
+                                </div>
+                            </div>
+                            
+                            <div id="downloadedTab" class="tab-content">
+                                <div class="downloaded-header">
+                                    <div class="download-stats">
+                                        <span class="stat-item">
+                                            <i class="fas fa-download"></i>
+                                            已下载: <strong id="downloadedCount">0</strong>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div id="downloadedExtensions" class="extensions-grid">
+                                    <!-- 已下载的扩展列表 -->
+                                </div>
+                            </div>
+                            
+                            <div id="customTab" class="tab-content">
+                                <div class="custom-extension-form">
+                                    <div class="form-group">
+                                        <label class="form-label">扩展ID:</label>
+                                        <input type="text" id="customExtensionId" class="form-input" 
+                                               placeholder="例如: cjpalhdlnbpafiamejdnhcphjbkeiagm">
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">扩展名称:</label>
+                                        <input type="text" id="customExtensionName" class="form-input" 
+                                               placeholder="例如: uBlock Origin">
+                                    </div>
+                                    <div class="form-group">
+                                        <button id="addCustomExtensionBtn" class="form-btn primary">
+                                            <i class="fas fa-plus"></i>
+                                            添加自定义扩展
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="customExtensionsList" class="extensions-grid">
+                                    <!-- 自定义扩展列表 -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="installation-panel">
+                            <div class="panel-header">
+                                <h4 class="panel-title">
+                                    <i class="fas fa-cogs"></i>
+                                    批量安装配置
+                                </h4>
+                            </div>
+                            <div class="panel-body">
+                                <div class="installation-tabs">
+                                    <div class="install-tab-nav">
+                                        <button class="install-tab-btn active" data-tab="static">
+                                            <i class="fas fa-folder"></i>
+                                            安装到配置
+                                        </button>
+                                        <button class="install-tab-btn" data-tab="running">
+                                            <i class="fas fa-play-circle"></i>
+                                            安装到运行中浏览器
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="staticInstallTab" class="install-tab-content active">
+                                        <div class="config-selection">
+                                            <label class="form-label">选择目标配置:</label>
+                                            <div id="configSelectionList" class="config-checkboxes">
+                                                <!-- 动态加载的配置选择列表 -->
+                                            </div>
+                                        </div>
+                                        <div class="install-actions">
+                                            <button id="batchInstallBtn" class="install-btn primary">
+                                                <i class="fas fa-download"></i>
+                                                批量安装到选中配置
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div id="runningInstallTab" class="install-tab-content">
+                                        <div class="running-browsers-info">
+                                            <div class="info-header">
+                                                <span class="info-text">
+                                                    <i class="fas fa-info-circle"></i>
+                                                    选择要安装扩展的运行中浏览器
+                                                </span>
+                                                <button id="refreshRunningBrowsersBtn" class="refresh-btn">
+                                                    <i class="fas fa-sync"></i>
+                                                    刷新
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="running-browsers-selection">
+                                            <div id="runningBrowsersList" class="running-browsers-grid">
+                                                <!-- 动态加载的运行中浏览器列表 -->
+                                            </div>
+                                        </div>
+                                        <div class="install-actions">
+                                            <button id="installToRunningBtn" class="install-btn success">
+                                                <i class="fas fa-bolt"></i>
+                                                立即安装到选中浏览器
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-panel" id="extensionProgress" style="display: none;">
+                            <div class="progress-header">
+                                <h4 class="progress-title">
+                                    <i class="fas fa-spinner fa-spin"></i>
+                                    <span id="progressTitle">正在下载扩展...</span>
+                                </h4>
+                            </div>
+                            <div class="progress-body">
+                                <div class="progress-info">
+                                    <span id="progressText">准备中...</span>
+                                    <span id="progressPercent">0%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div id="progressBarFill" class="progress-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-details">
+                                    <span id="progressDetails">等待开始...</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="log-panel">
+                            <div class="panel-header">
+                                <h4 class="panel-title">
+                                    <i class="fas fa-list"></i>
+                                    操作日志
+                                </h4>
+                                <button id="clearExtensionLogBtn" class="clear-btn">
+                                    <i class="fas fa-trash"></i>
+                                    清空
+                                </button>
+                            </div>
+                            <div class="panel-body">
+                                <div id="extensionLog" class="operation-log">
+                                    <!-- 操作日志 -->
                                 </div>
                             </div>
                         </div>

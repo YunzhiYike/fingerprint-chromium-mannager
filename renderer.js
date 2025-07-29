@@ -2194,3 +2194,816 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
 
 // 确保类在全局可用
 window.BrowserConfigManager = BrowserConfigManager;
+
+// ========================== Chrome扩展管理器 ==========================
+
+class ChromeExtensionManager {
+    constructor() {
+        this.recommendedExtensions = [];
+        this.downloadedExtensions = [];
+        this.customExtensions = [];
+        this.selectedExtensions = new Set();
+        this.selectedConfigs = new Set();
+        this.runningBrowsers = [];
+        this.selectedRunningBrowsers = new Set();
+        this.init();
+    }
+
+    async init() {
+        this.bindEvents();
+        await this.loadRecommendedExtensions();
+        await this.loadDownloadedExtensions();
+        await this.updateConfigSelectionList();
+        await this.loadRunningBrowsers();
+    }
+
+    bindEvents() {
+        // 扩展管理按钮
+        document.getElementById('extensionsBtn').addEventListener('click', async () => {
+            await this.showExtensionsPage();
+        });
+
+        document.getElementById('closeExtensionsBtn').addEventListener('click', () => {
+            this.hideExtensionsPage();
+        });
+
+        // 选项卡切换
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.switchTab(e.target.closest('.tab-btn').dataset.tab);
+            });
+        });
+
+        // 批量操作按钮
+        document.getElementById('downloadSelectedBtn').addEventListener('click', () => {
+            this.downloadSelectedExtensions();
+        });
+
+        document.getElementById('installSelectedBtn').addEventListener('click', () => {
+            this.installSelectedExtensions();
+        });
+
+        document.getElementById('refreshExtensionsBtn').addEventListener('click', async () => {
+            await this.refreshExtensions();
+        });
+
+        // 筛选和选择
+        document.getElementById('categoryFilter').addEventListener('change', (e) => {
+            this.filterExtensions(e.target.value);
+        });
+
+        document.getElementById('selectAllExtensionsBtn').addEventListener('click', () => {
+            this.selectAllExtensions();
+        });
+
+        document.getElementById('unselectAllExtensionsBtn').addEventListener('click', () => {
+            this.unselectAllExtensions();
+        });
+
+        // 自定义扩展
+        document.getElementById('addCustomExtensionBtn').addEventListener('click', () => {
+            this.addCustomExtension();
+        });
+
+        // 批量安装
+        document.getElementById('batchInstallBtn').addEventListener('click', () => {
+            this.installSelectedExtensions();
+        });
+
+        // 安装选项卡切换
+        document.querySelectorAll('.install-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                this.switchInstallTab(e.target.closest('.install-tab-btn').dataset.tab);
+            });
+        });
+
+        // 安装到运行中浏览器
+        document.getElementById('installToRunningBtn').addEventListener('click', () => {
+            this.installToRunningBrowsers();
+        });
+
+        // 刷新运行中浏览器列表
+        document.getElementById('refreshRunningBrowsersBtn').addEventListener('click', async () => {
+            await this.loadRunningBrowsers();
+        });
+
+        // 清空日志
+        document.getElementById('clearExtensionLogBtn').addEventListener('click', () => {
+            this.clearLog();
+        });
+
+        // 监听下载进度
+        ipcRenderer.on('extension-download-progress', (event, progress) => {
+            this.updateDownloadProgress(progress);
+        });
+
+        ipcRenderer.on('extension-download-complete', (event, result) => {
+            this.handleDownloadComplete(result);
+        });
+    }
+
+    async showExtensionsPage() {
+        document.getElementById('extensionsPage').style.display = 'block';
+        await this.refreshExtensions();
+    }
+
+    hideExtensionsPage() {
+        document.getElementById('extensionsPage').style.display = 'none';
+        // 停止自动刷新
+        this.stopAutoRefreshRunningBrowsers();
+    }
+
+    switchTab(tabName) {
+        // 切换选项卡激活状态
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+        // 切换内容显示
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}Tab`).classList.add('active');
+    }
+
+    async loadRecommendedExtensions() {
+        try {
+            this.recommendedExtensions = await ipcRenderer.invoke('get-recommended-extensions');
+            this.renderExtensionsList(this.recommendedExtensions);
+        } catch (error) {
+            this.addLog('error', `加载推荐扩展失败: ${error.message}`);
+        }
+    }
+
+    async loadDownloadedExtensions() {
+        try {
+            this.downloadedExtensions = await ipcRenderer.invoke('get-downloaded-extensions');
+            this.renderDownloadedExtensions();
+            this.updateDownloadedCount();
+        } catch (error) {
+            this.addLog('error', `加载已下载扩展失败: ${error.message}`);
+        }
+    }
+
+    renderExtensionsList(extensions) {
+        const container = document.getElementById('extensionsList');
+        container.innerHTML = '';
+
+        extensions.forEach(ext => {
+            const extCard = document.createElement('div');
+            extCard.className = 'extension-card';
+            extCard.innerHTML = `
+                <div class="extension-header">
+                    <input type="checkbox" class="extension-checkbox" data-id="${ext.id}" 
+                           ${this.selectedExtensions.has(ext.id) ? 'checked' : ''}>
+                    <div class="extension-info">
+                        <h4 class="extension-name">${ext.name}</h4>
+                        <span class="extension-category">${ext.category}</span>
+                    </div>
+                </div>
+                <div class="extension-body">
+                    <p class="extension-description">${ext.description}</p>
+                    <div class="extension-id">ID: ${ext.id}</div>
+                </div>
+                <div class="extension-actions">
+                    <button class="action-btn download" onclick="extensionManager.downloadSingleExtension('${ext.id}', '${ext.name}')">
+                        <i class="fas fa-download"></i>
+                        下载
+                    </button>
+                </div>
+            `;
+
+            // 绑定复选框事件
+            const checkbox = extCard.querySelector('.extension-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.selectedExtensions.add(ext.id);
+                } else {
+                    this.selectedExtensions.delete(ext.id);
+                }
+            });
+
+            container.appendChild(extCard);
+        });
+    }
+
+    renderDownloadedExtensions() {
+        const container = document.getElementById('downloadedExtensions');
+        container.innerHTML = '';
+
+        this.downloadedExtensions.forEach(ext => {
+            const extCard = document.createElement('div');
+            extCard.className = 'extension-card downloaded';
+            extCard.innerHTML = `
+                <div class="extension-header">
+                    <input type="checkbox" class="extension-checkbox" data-id="${ext.extensionId}" 
+                           ${this.selectedExtensions.has(ext.extensionId) ? 'checked' : ''}>
+                    <div class="extension-info">
+                        <h4 class="extension-name">${ext.displayName}</h4>
+                        <span class="extension-status">已下载</span>
+                    </div>
+                </div>
+                <div class="extension-body">
+                    <div class="extension-id">ID: ${ext.extensionId}</div>
+                    <div class="extension-file">文件: ${ext.fileName}</div>
+                </div>
+                <div class="extension-actions">
+                    <button class="action-btn install" onclick="extensionManager.installSingleExtension('${ext.extensionId}')">
+                        <i class="fas fa-plus"></i>
+                        安装
+                    </button>
+                </div>
+            `;
+
+            // 绑定复选框事件
+            const checkbox = extCard.querySelector('.extension-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.selectedExtensions.add(ext.extensionId);
+                } else {
+                    this.selectedExtensions.delete(ext.extensionId);
+                }
+            });
+
+            container.appendChild(extCard);
+        });
+    }
+
+    async updateConfigSelectionList() {
+        const container = document.getElementById('configSelectionList');
+        container.innerHTML = '';
+
+        try {
+            // 通过IPC获取配置列表
+            const configs = await ipcRenderer.invoke('load-configs');
+            
+            configs.forEach(config => {
+                const configItem = document.createElement('div');
+                configItem.className = 'config-checkbox-item';
+                configItem.innerHTML = `
+                    <label class="config-checkbox">
+                        <input type="checkbox" data-config-id="${config.id}" 
+                               ${this.selectedConfigs.has(config.id) ? 'checked' : ''}>
+                        <span class="checkbox-mark"></span>
+                        <span class="config-name">${config.name}</span>
+                    </label>
+                `;
+
+                // 绑定复选框事件
+                const checkbox = configItem.querySelector('input[type="checkbox"]');
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        this.selectedConfigs.add(config.id);
+                    } else {
+                        this.selectedConfigs.delete(config.id);
+                    }
+                    this.updateConfigCount();
+                });
+
+                container.appendChild(configItem);
+            });
+            
+            this.updateConfigCount();
+            this.addLog('info', `📋 已加载 ${configs.length} 个浏览器配置`);
+        } catch (error) {
+            this.addLog('error', `加载配置列表失败: ${error.message}`);
+        }
+    }
+
+    updateConfigCount() {
+        const totalConfigs = document.querySelectorAll('#configSelectionList .config-checkbox-item').length;
+        const selectedConfigs = this.selectedConfigs.size;
+        
+        // 更新计数显示
+        let countElement = document.querySelector('.config-count');
+        if (!countElement) {
+            countElement = document.createElement('div');
+            countElement.className = 'config-count';
+            countElement.style.cssText = `
+                margin-top: 8px;
+                font-size: 12px;
+                color: #6c757d;
+                text-align: center;
+                padding: 8px;
+                background: #f8f9fa;
+                border-radius: 4px;
+            `;
+            document.getElementById('configSelectionList').parentNode.appendChild(countElement);
+        }
+        
+        countElement.textContent = `已选择 ${selectedConfigs} / ${totalConfigs} 个配置`;
+    }
+
+    updateDownloadedCount() {
+        document.getElementById('downloadedCount').textContent = this.downloadedExtensions.length;
+    }
+
+    filterExtensions(category) {
+        const filtered = category 
+            ? this.recommendedExtensions.filter(ext => ext.category === category)
+            : this.recommendedExtensions;
+        this.renderExtensionsList(filtered);
+    }
+
+    selectAllExtensions() {
+        this.recommendedExtensions.forEach(ext => {
+            this.selectedExtensions.add(ext.id);
+        });
+        this.renderExtensionsList(this.recommendedExtensions);
+    }
+
+    unselectAllExtensions() {
+        this.selectedExtensions.clear();
+        this.renderExtensionsList(this.recommendedExtensions);
+    }
+
+    async downloadSelectedExtensions() {
+        if (this.selectedExtensions.size === 0) {
+            this.addLog('warning', '请先选择要下载的扩展');
+            return;
+        }
+
+        const extensionsToDownload = this.recommendedExtensions.filter(ext => 
+            this.selectedExtensions.has(ext.id)
+        );
+
+        this.addLog('info', `开始下载 ${extensionsToDownload.length} 个扩展...`);
+        this.showProgress('正在下载扩展...');
+
+        try {
+            const result = await ipcRenderer.invoke('batch-download-extensions', extensionsToDownload);
+            this.handleDownloadComplete(result);
+        } catch (error) {
+            this.addLog('error', `批量下载失败: ${error.message}`);
+            this.hideProgress();
+        }
+    }
+
+    async downloadSingleExtension(extensionId, extensionName) {
+        this.addLog('info', `开始下载扩展: ${extensionName}`);
+        this.showProgress('正在下载扩展...');
+
+        try {
+            const result = await ipcRenderer.invoke('batch-download-extensions', [{
+                id: extensionId,
+                name: extensionName
+            }]);
+            this.handleDownloadComplete(result);
+        } catch (error) {
+            this.addLog('error', `下载扩展失败: ${error.message}`);
+            this.hideProgress();
+        }
+    }
+
+    async installSelectedExtensions() {
+        if (this.selectedExtensions.size === 0) {
+            this.addLog('warning', '请先选择要安装的扩展');
+            return;
+        }
+
+        if (this.selectedConfigs.size === 0) {
+            this.addLog('warning', '请先选择目标配置');
+            return;
+        }
+
+        const extensionIds = Array.from(this.selectedExtensions);
+        const configIds = Array.from(this.selectedConfigs);
+
+        this.addLog('info', `开始为 ${configIds.length} 个配置安装 ${extensionIds.length} 个扩展...`);
+        this.showProgress('正在安装扩展...');
+
+        try {
+            const result = await ipcRenderer.invoke('batch-install-extensions', {
+                configIds: configIds,
+                extensionIds: extensionIds
+            });
+
+            this.hideProgress();
+
+            if (result.success) {
+                this.addLog('success', `✅ 批量安装完成: 成功 ${result.summary.successful}，失败 ${result.summary.failed}`);
+            } else {
+                this.addLog('error', `❌ 批量安装失败: ${result.error}`);
+            }
+
+            // 显示详细结果
+            result.results.forEach(res => {
+                if (res.success) {
+                    this.addLog('success', `✅ ${res.configName}: 安装成功`);
+                } else {
+                    this.addLog('error', `❌ ${res.configName}: ${res.error}`);
+                }
+            });
+
+        } catch (error) {
+            this.addLog('error', `安装扩展失败: ${error.message}`);
+            this.hideProgress();
+        }
+    }
+
+    async installSingleExtension(extensionId) {
+        if (this.selectedConfigs.size === 0) {
+            this.addLog('warning', '请先选择目标配置');
+            return;
+        }
+
+        const configIds = Array.from(this.selectedConfigs);
+
+        this.addLog('info', `开始为 ${configIds.length} 个配置安装扩展 ${extensionId}...`);
+
+        try {
+            const result = await ipcRenderer.invoke('batch-install-extensions', {
+                configIds: configIds,
+                extensionIds: [extensionId]
+            });
+
+            if (result.success) {
+                this.addLog('success', `✅ 扩展安装完成`);
+            } else {
+                this.addLog('error', `❌ 扩展安装失败: ${result.error}`);
+            }
+        } catch (error) {
+            this.addLog('error', `安装扩展失败: ${error.message}`);
+        }
+    }
+
+    addCustomExtension() {
+        const idInput = document.getElementById('customExtensionId');
+        const nameInput = document.getElementById('customExtensionName');
+
+        const id = idInput.value.trim();
+        const name = nameInput.value.trim();
+
+        if (!id) {
+            this.addLog('warning', '请输入扩展ID');
+            return;
+        }
+
+        const customExt = {
+            id: id,
+            name: name || id,
+            description: '自定义扩展',
+            category: '自定义'
+        };
+
+        this.customExtensions.push(customExt);
+        this.renderCustomExtensions();
+
+        // 清空输入框
+        idInput.value = '';
+        nameInput.value = '';
+
+        this.addLog('success', `✅ 已添加自定义扩展: ${customExt.name}`);
+    }
+
+    renderCustomExtensions() {
+        const container = document.getElementById('customExtensionsList');
+        container.innerHTML = '';
+
+        this.customExtensions.forEach((ext, index) => {
+            const extCard = document.createElement('div');
+            extCard.className = 'extension-card custom';
+            extCard.innerHTML = `
+                <div class="extension-header">
+                    <input type="checkbox" class="extension-checkbox" data-id="${ext.id}" 
+                           ${this.selectedExtensions.has(ext.id) ? 'checked' : ''}>
+                    <div class="extension-info">
+                        <h4 class="extension-name">${ext.name}</h4>
+                        <span class="extension-category">${ext.category}</span>
+                    </div>
+                </div>
+                <div class="extension-body">
+                    <div class="extension-id">ID: ${ext.id}</div>
+                </div>
+                <div class="extension-actions">
+                    <button class="action-btn download" onclick="extensionManager.downloadSingleExtension('${ext.id}', '${ext.name}')">
+                        <i class="fas fa-download"></i>
+                        下载
+                    </button>
+                    <button class="action-btn remove" onclick="extensionManager.removeCustomExtension(${index})">
+                        <i class="fas fa-trash"></i>
+                        删除
+                    </button>
+                </div>
+            `;
+
+            // 绑定复选框事件
+            const checkbox = extCard.querySelector('.extension-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.selectedExtensions.add(ext.id);
+                } else {
+                    this.selectedExtensions.delete(ext.id);
+                }
+            });
+
+            container.appendChild(extCard);
+        });
+    }
+
+    removeCustomExtension(index) {
+        const ext = this.customExtensions[index];
+        this.customExtensions.splice(index, 1);
+        this.selectedExtensions.delete(ext.id);
+        this.renderCustomExtensions();
+        this.addLog('info', `已删除自定义扩展: ${ext.name}`);
+    }
+
+    async refreshExtensions() {
+        this.addLog('info', '正在刷新扩展列表...');
+        await this.loadRecommendedExtensions();
+        await this.loadDownloadedExtensions();
+        await this.updateConfigSelectionList();
+        this.addLog('success', '✅ 扩展列表刷新完成');
+    }
+
+    updateDownloadProgress(progress) {
+        this.showProgress(`正在下载: ${progress.currentExtension}`);
+        
+        const progressBar = document.getElementById('progressBarFill');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressDetails = document.getElementById('progressDetails');
+
+        if (progressBar) progressBar.style.width = `${progress.progress}%`;
+        if (progressText) progressText.textContent = `下载进度: ${progress.current}/${progress.total}`;
+        if (progressPercent) progressPercent.textContent = `${progress.progress}%`;
+        if (progressDetails) progressDetails.textContent = `当前: ${progress.currentExtension}`;
+    }
+
+    handleDownloadComplete(result) {
+        this.hideProgress();
+
+        if (result.success) {
+            this.addLog('success', `✅ 下载完成: 成功 ${result.summary.successful}，失败 ${result.summary.failed}`);
+        } else {
+            this.addLog('error', `❌ 下载失败`);
+        }
+
+        // 显示详细结果
+        result.results.forEach(res => {
+            if (res.success) {
+                this.addLog('success', `✅ ${res.fileName}: 下载成功`);
+            } else {
+                this.addLog('error', `❌ ${res.extensionId}: ${res.error}`);
+            }
+        });
+
+        // 刷新已下载列表
+        this.loadDownloadedExtensions();
+    }
+
+    showProgress(title) {
+        const progressPanel = document.getElementById('extensionProgress');
+        const progressTitle = document.getElementById('progressTitle');
+        
+        if (progressPanel) progressPanel.style.display = 'block';
+        if (progressTitle) progressTitle.textContent = title;
+    }
+
+    hideProgress() {
+        const progressPanel = document.getElementById('extensionProgress');
+        if (progressPanel) progressPanel.style.display = 'none';
+    }
+
+    addLog(type, message) {
+        const logContainer = document.getElementById('extensionLog');
+        if (!logContainer) return;
+
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry ${type}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        logEntry.innerHTML = `
+            <span class="log-time">${timestamp}</span>
+            <span class="log-message">${message}</span>
+        `;
+
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    clearLog() {
+        const logContainer = document.getElementById('extensionLog');
+        if (logContainer) {
+            logContainer.innerHTML = '';
+        }
+    }
+
+    // 切换安装选项卡
+    switchInstallTab(tabName) {
+        // 切换选项卡激活状态
+        document.querySelectorAll('.install-tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+        // 切换内容显示
+        document.querySelectorAll('.install-tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}InstallTab`).classList.add('active');
+
+        // 处理运行中浏览器选项卡的自动刷新
+        if (tabName === 'running') {
+            // 切换到运行中浏览器标签，启动自动刷新
+            this.loadRunningBrowsers();
+            this.startAutoRefreshRunningBrowsers();
+        } else {
+            // 切换到其他标签，停止自动刷新
+            this.stopAutoRefreshRunningBrowsers();
+        }
+    }
+
+    // 加载运行中的浏览器列表
+    async loadRunningBrowsers() {
+        try {
+            this.runningBrowsers = await ipcRenderer.invoke('get-running-browsers-for-extensions');
+            this.renderRunningBrowsers();
+            this.addLog('info', `🔄 已刷新运行中浏览器列表: ${this.runningBrowsers.length} 个`);
+        } catch (error) {
+            this.addLog('error', `加载运行中浏览器失败: ${error.message}`);
+        }
+    }
+
+    // 开始自动刷新在线浏览器列表
+    startAutoRefreshRunningBrowsers() {
+        // 清除现有的定时器
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+        }
+        
+        // 每5秒自动刷新一次
+        this.refreshTimer = setInterval(async () => {
+            // 只有在运行中浏览器标签页激活时才刷新
+            const runningTab = document.querySelector('.install-tab-btn[data-tab="runningBrowsersTab"]');
+            if (runningTab && runningTab.classList.contains('active')) {
+                await this.loadRunningBrowsers();
+            }
+        }, 5000);
+        
+        console.log('🔄 已启动自动刷新在线浏览器列表 (每5秒)');
+    }
+
+    // 停止自动刷新
+    stopAutoRefreshRunningBrowsers() {
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
+            console.log('⏹️ 已停止自动刷新在线浏览器列表');
+        }
+    }
+
+    // 渲染运行中的浏览器列表
+    renderRunningBrowsers() {
+        const container = document.getElementById('runningBrowsersList');
+        container.innerHTML = '';
+
+        if (this.runningBrowsers.length === 0) {
+            container.innerHTML = `
+                <div class="no-running-browsers">
+                    <div class="no-browsers-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div class="no-browsers-text">
+                        <h4>暂无运行中的浏览器</h4>
+                        <p>请先启动一些浏览器配置，然后刷新列表</p>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        this.runningBrowsers.forEach(browser => {
+            const browserCard = document.createElement('div');
+            browserCard.className = 'running-browser-card';
+            
+            const startTime = new Date(browser.startTime);
+            const duration = this.getTimeDuration(startTime);
+            
+            browserCard.innerHTML = `
+                <div class="browser-header">
+                    <input type="checkbox" class="browser-checkbox" data-config-id="${browser.configId}" 
+                           ${this.selectedRunningBrowsers.has(browser.configId) ? 'checked' : ''}>
+                    <div class="browser-info">
+                        <h4 class="browser-name">${browser.configName}</h4>
+                        <div class="browser-status">
+                            <span class="status-indicator running"></span>
+                            运行中
+                        </div>
+                    </div>
+                    <div class="browser-actions">
+                        <span class="action-label">PID: ${browser.pid}</span>
+                    </div>
+                </div>
+                <div class="browser-body">
+                    <div class="browser-details">
+                        <div class="detail-item">
+                            <i class="fas fa-plug"></i>
+                            调试端口: ${browser.debugPort}
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-clock"></i>
+                            运行时长: ${duration}
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-calendar"></i>
+                            启动时间: ${startTime.toLocaleString()}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 绑定复选框事件
+            const checkbox = browserCard.querySelector('.browser-checkbox');
+            checkbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.selectedRunningBrowsers.add(browser.configId);
+                } else {
+                    this.selectedRunningBrowsers.delete(browser.configId);
+                }
+            });
+
+            container.appendChild(browserCard);
+        });
+    }
+
+    // 计算时间间隔
+    getTimeDuration(startTime) {
+        const now = new Date();
+        const diff = now - startTime;
+        const minutes = Math.floor(diff / 60000);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) {
+            return `${days}天 ${hours % 24}小时`;
+        } else if (hours > 0) {
+            return `${hours}小时 ${minutes % 60}分钟`;
+        } else {
+            return `${minutes}分钟`;
+        }
+    }
+
+    // 安装扩展到运行中的浏览器
+    async installToRunningBrowsers() {
+        if (this.selectedExtensions.size === 0) {
+            this.addLog('warning', '请先选择要安装的扩展');
+            return;
+        }
+
+        if (this.selectedRunningBrowsers.size === 0) {
+            this.addLog('warning', '请先选择目标浏览器');
+            return;
+        }
+
+        const extensionIds = Array.from(this.selectedExtensions);
+        const browserConfigIds = Array.from(this.selectedRunningBrowsers);
+
+        this.addLog('info', `🚀 开始为 ${browserConfigIds.length} 个运行中浏览器安装 ${extensionIds.length} 个扩展...`);
+        this.showProgress('正在安装扩展到运行中浏览器...');
+
+        try {
+            const result = await ipcRenderer.invoke('install-extensions-to-running-browsers', {
+                browserConfigIds: browserConfigIds,
+                extensionIds: extensionIds
+            });
+
+            this.hideProgress();
+
+            if (result.success) {
+                this.addLog('success', `✅ 动态安装完成: 成功 ${result.summary.successful}，失败 ${result.summary.failed}`);
+            } else {
+                this.addLog('error', `❌ 动态安装失败`);
+            }
+
+            // 显示详细结果
+            result.results.forEach(res => {
+                if (res.success) {
+                    this.addLog('success', `✅ ${res.configName}: 安装成功 (${res.summary.successful}/${res.summary.total})`);
+                    
+                    // 显示每个扩展的安装结果
+                    if (res.installResults) {
+                        res.installResults.forEach(extResult => {
+                            if (extResult.success) {
+                                this.addLog('info', `  📦 ${extResult.extensionId}: ${extResult.method}`);
+                            } else {
+                                this.addLog('warning', `  ❌ ${extResult.extensionId}: ${extResult.error}`);
+                            }
+                        });
+                    }
+                } else {
+                    this.addLog('error', `❌ ${res.configName}: ${res.error}`);
+                }
+            });
+
+        } catch (error) {
+            this.addLog('error', `安装扩展到运行中浏览器失败: ${error.message}`);
+            this.hideProgress();
+        }
+    }
+}
+
+// 创建全局扩展管理器实例
+window.extensionManager = new ChromeExtensionManager();

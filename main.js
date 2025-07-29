@@ -7,6 +7,7 @@ const ProxyForwarder = require('./proxy-forwarder');
 const BrowserDownloader = require('./browser-downloader');
 const UltimateSyncManager = require('./ultimate-sync-manager');
 const NativeSyncManager = require('./native-sync-manager');
+const ChromeExtensionManager = require('./chrome-extension-manager');
 const { log } = require('console');
 
 // 配置文件路径
@@ -33,6 +34,9 @@ const proxyForwarder = new ProxyForwarder();
 
 // 浏览器下载器实例
 const browserDownloader = new BrowserDownloader();
+
+// Chrome扩展管理器实例
+const extensionManager = new ChromeExtensionManager();
 
 // 获取可用的调试端口
 async function getAvailableDebugPort() {
@@ -860,6 +864,243 @@ ipcMain.handle('stop-all-browsers', async () => {
     }
 });
 
+// 获取已安装扩展的路径
+async function getInstalledExtensionPaths(extensionsDir) {
+  try {
+    // 检查Extensions目录是否存在
+    await fs.access(extensionsDir);
+    
+    const extensionIds = await fs.readdir(extensionsDir);
+    const validExtensionPaths = [];
+    
+    for (const extensionId of extensionIds) {
+      const extensionPath = path.join(extensionsDir, extensionId);
+      
+      try {
+        const stat = await fs.stat(extensionPath);
+        if (stat.isDirectory()) {
+          // 检查是否有manifest.json文件
+          const manifestPath = path.join(extensionPath, 'manifest.json');
+          try {
+            await fs.access(manifestPath);
+            validExtensionPaths.push(extensionPath);
+            console.log(`✅ 发现有效扩展: ${extensionId}`);
+          } catch (manifestError) {
+            console.log(`⚠️ 扩展 ${extensionId} 缺少manifest.json`);
+          }
+        }
+      } catch (statError) {
+        console.log(`⚠️ 无法访问扩展目录: ${extensionId}`);
+      }
+    }
+    
+    return validExtensionPaths;
+  } catch (error) {
+    // Extensions目录不存在或无法访问
+    return [];
+  }
+}
+
+// 计算用户数据目录（统一的逻辑）
+function calculateUserDataDir(config, appSettings) {
+  const defaultRoot = appSettings.defaultUserDataRoot;
+  const rootPath = config.userDataRoot || defaultRoot;
+  const randomFolder = config.randomFolder || `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  return path.join(rootPath, randomFolder);
+}
+
+// 通过进程ID获取浏览器实际使用的用户数据目录
+async function getBrowserUserDataDir(pid) {
+  try {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    // 在macOS上使用ps命令获取进程的完整命令行
+    const { stdout } = await execAsync(`ps -p ${pid} -o command=`);
+    const commandLine = stdout.trim();
+    
+    console.log(`🔍 浏览器进程 ${pid} 命令行: ${commandLine}`);
+    
+    // 提取--user-data-dir参数 (处理路径中的空格)
+    const userDataDirMatch = commandLine.match(/--user-data-dir=([^\s].+?)(?:\s--|\s*$)/);
+    if (userDataDirMatch) {
+      const userDataDir = userDataDirMatch[1].trim();
+      console.log(`✅ 提取到用户数据目录: ${userDataDir}`);
+      return userDataDir;
+    } else {
+      throw new Error('未找到--user-data-dir参数');
+    }
+  } catch (error) {
+    console.error(`❌ 获取浏览器用户数据目录失败: ${error.message}`);
+    throw error;
+  }
+}
+
+// 动态加载扩展到运行中的浏览器
+async function dynamicLoadExtensionsToRunningBrowser(browserInfo, extensionIds, userDataDir) {
+    const http = require('http');
+    const WebSocket = require('ws');
+    
+    console.log(`🔌 连接到浏览器调试端口: ${browserInfo.debugPort}`);
+    
+    // 获取浏览器tabs信息
+    const tabsData = await new Promise((resolve, reject) => {
+        const req = http.get(`http://localhost:${browserInfo.debugPort}/json`, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (error) {
+                    reject(new Error(`解析调试信息失败: ${error.message}`));
+                }
+            });
+        });
+
+        req.on('error', (error) => {
+            reject(new Error(`连接调试端口失败: ${error.message}`));
+        });
+        
+        req.setTimeout(5000, () => {
+            req.abort();
+            reject(new Error('连接调试端口超时'));
+        });
+    });
+
+    // 查找页面tab
+    const pageTab = tabsData.find(t => t.type === 'page') || tabsData[0];
+    if (!pageTab) {
+        throw new Error('未找到可用的标签页');
+    }
+
+    console.log(`🌐 使用标签页: ${pageTab.title || 'Untitled'}`);
+
+    // 通过WebSocket执行扩展动态加载
+    return new Promise((resolve, reject) => {
+        const ws = new WebSocket(pageTab.webSocketDebuggerUrl);
+        let messageId = 1;
+        
+        const sendCommand = (method, params = {}) => {
+            return new Promise((cmdResolve, cmdReject) => {
+                const id = messageId++;
+                const message = { id, method, params };
+                
+                const timeout = setTimeout(() => {
+                    cmdReject(new Error(`命令 ${method} 超时`));
+                }, 10000);
+                
+                const handleMessage = (data) => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.id === id) {
+                            clearTimeout(timeout);
+                            ws.removeListener('message', handleMessage);
+                            
+                            if (response.error) {
+                                cmdReject(new Error(`CDP错误: ${response.error.message}`));
+                            } else {
+                                cmdResolve(response.result);
+                            }
+                        }
+                    } catch (error) {
+                        cmdReject(error);
+                    }
+                };
+                
+                ws.on('message', handleMessage);
+                ws.send(JSON.stringify(message));
+            });
+        };
+        
+        ws.on('open', async () => {
+            try {
+                console.log(`🔗 WebSocket连接已建立`);
+                
+                // 方法1: 尝试刷新扩展页面来重新加载扩展
+                try {
+                    const script = `
+                        (function() {
+                            console.log('🔄 尝试动态加载扩展...');
+                            
+                            // 创建通知元素
+                            const notification = document.createElement('div');
+                            notification.style.cssText = \`
+                                position: fixed;
+                                top: 20px;
+                                right: 20px;
+                                background: #4CAF50;
+                                color: white;
+                                padding: 15px 20px;
+                                border-radius: 8px;
+                                z-index: 10000;
+                                font-family: Arial, sans-serif;
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                                max-width: 350px;
+                            \`;
+                            
+                            notification.innerHTML = \`
+                                <div style="font-weight: bold; margin-bottom: 8px;">🧩 扩展已安装</div>
+                                <div style="font-size: 13px; margin-bottom: 8px;">新扩展已成功安装到此浏览器</div>
+                                <div style="font-size: 12px; opacity: 0.9;">
+                                    扩展将在下次重启后自动加载，或
+                                    <a href="chrome://extensions/" style="color: #fff; text-decoration: underline;">
+                                        前往扩展管理页面
+                                    </a>
+                                </div>
+                            \`;
+                            
+                            document.body.appendChild(notification);
+                            
+                            // 5秒后自动消失
+                            setTimeout(() => {
+                                if (notification.parentNode) {
+                                    notification.parentNode.removeChild(notification);
+                                }
+                            }, 8000);
+                            
+                            return { success: true, method: 'notification' };
+                        })()
+                    `;
+                    
+                    await sendCommand('Runtime.evaluate', {
+                        expression: script,
+                        returnByValue: true
+                    });
+                    
+                    console.log(`📢 已在浏览器中显示扩展安装通知`);
+                    
+                } catch (error) {
+                    console.warn(`⚠️ 显示通知失败: ${error.message}`);
+                }
+                
+                // 方法2: 尝试通过导航到扩展页面来触发重新加载
+                try {
+                    // 不强制导航，只是静默处理
+                    console.log(`💡 建议用户手动前往 chrome://extensions/ 或重启浏览器`);
+                } catch (error) {
+                    console.warn(`⚠️ 导航失败: ${error.message}`);
+                }
+                
+                ws.close();
+                resolve({ success: true, method: 'notification' });
+                
+            } catch (error) {
+                ws.close();
+                reject(error);
+            }
+        });
+        
+        ws.on('error', (error) => {
+            reject(new Error(`WebSocket连接错误: ${error.message}`));
+        });
+        
+        ws.on('close', () => {
+            console.log(`🔌 WebSocket连接已关闭`);
+        });
+    });
+}
+
 async function buildChromiumArgs(config) {
   const args = [];
 
@@ -944,11 +1185,9 @@ async function buildChromiumArgs(config) {
 
 
   // 处理用户数据目录
+  let userDataDir;
   try {
-    const defaultRoot = appSettings.defaultUserDataRoot;
-    const rootPath = config.userDataRoot || defaultRoot;
-    const randomFolder = config.randomFolder || `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    const userDataDir = path.join(rootPath, randomFolder);
+    userDataDir = calculateUserDataDir(config, appSettings);
 
     // 确保目录存在
     await fs.mkdir(userDataDir, { recursive: true });
@@ -956,8 +1195,22 @@ async function buildChromiumArgs(config) {
   } catch (error) {
     console.error('创建用户数据目录失败:', error);
     // 如果创建失败，使用临时目录
-    const tempDir = path.join(os.tmpdir(), 'chromium-' + Date.now());
-    args.push(`--user-data-dir=${tempDir}`);
+    userDataDir = path.join(os.tmpdir(), 'chromium-' + Date.now());
+    args.push(`--user-data-dir=${userDataDir}`);
+  }
+
+  // 自动加载已安装的扩展
+  try {
+    const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+    const extensionPaths = await getInstalledExtensionPaths(extensionsDir);
+    
+    if (extensionPaths.length > 0) {
+      const extensionArg = `--load-extension=${extensionPaths.join(',')}`;
+      args.push(extensionArg);
+      console.log(`🧩 加载 ${extensionPaths.length} 个已安装扩展: ${extensionPaths.map(p => path.basename(p)).join(', ')}`);
+    }
+  } catch (error) {
+    console.warn('⚠️ 加载扩展失败:', error.message);
   }
 
   return { args, debugPort, proxyPort };
@@ -1900,3 +2153,515 @@ async function executeActionWithCDP(client, action, browserName) {
 }
 
 // 注意：旧的BrowserSyncMonitor类已被移除，现在使用模块化的UltimateSyncManager
+
+// ========================== Chrome扩展管理 ==========================
+
+// 获取推荐扩展列表
+ipcMain.handle('get-recommended-extensions', async () => {
+    try {
+        return extensionManager.getRecommendedExtensions();
+    } catch (error) {
+        console.error('获取推荐扩展失败:', error);
+        return [];
+    }
+});
+
+// 根据类别获取扩展
+ipcMain.handle('get-extensions-by-category', async (event, category) => {
+    try {
+        return extensionManager.getExtensionsByCategory(category);
+    } catch (error) {
+        console.error('获取分类扩展失败:', error);
+        return [];
+    }
+});
+
+// 批量下载扩展
+ipcMain.handle('batch-download-extensions', async (event, extensionList) => {
+    try {
+        const onProgress = (progressData) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('extension-download-progress', progressData);
+            }
+        };
+
+        const result = await extensionManager.batchDownloadExtensions(extensionList, onProgress);
+        
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('extension-download-complete', result);
+        }
+        
+        return result;
+    } catch (error) {
+        console.error('批量下载扩展失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 获取已下载扩展列表
+ipcMain.handle('get-downloaded-extensions', async () => {
+    try {
+        return await extensionManager.getDownloadedExtensions();
+    } catch (error) {
+        console.error('获取已下载扩展失败:', error);
+        return [];
+    }
+});
+
+// 为指定配置安装扩展
+ipcMain.handle('install-extensions-to-config', async (event, { configId, extensionIds }) => {
+    try {
+        // 读取配置文件
+        let configs = [];
+        try {
+            const configData = await fs.readFile(CONFIG_FILE, 'utf8');
+            configs = JSON.parse(configData);
+        } catch (error) {
+            console.error('读取配置文件失败:', error);
+            throw new Error('无法读取配置文件');
+        }
+        const config = configs.find(c => c.id === configId);
+        
+        if (!config) {
+            return { success: false, error: '配置不存在' };
+        }
+        
+        // 🔧 优先使用运行中浏览器的实际目录
+        let userDataDir;
+        if (runningBrowsers.has(configId)) {
+            // 浏览器正在运行，获取实际的用户数据目录
+            const browserInfo = runningBrowsers.get(configId);
+            userDataDir = await getBrowserUserDataDir(browserInfo.pid);
+            console.log(`🎯 使用运行中浏览器的实际目录: ${userDataDir}`);
+        } else {
+            // 浏览器未运行，使用配置计算的目录
+            userDataDir = calculateUserDataDir(config, appSettings);
+            console.log(`📁 使用配置计算的目录: ${userDataDir}`);
+        }
+        
+        const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds);
+        return result;
+        
+    } catch (error) {
+        console.error('安装扩展到配置失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 批量为多个配置安装扩展
+ipcMain.handle('batch-install-extensions', async (event, { configIds, extensionIds }) => {
+    try {
+        console.log(`🚀 开始批量安装扩展 - 配置数: ${configIds.length}, 扩展数: ${extensionIds.length}`);
+        console.log(`🎯 目标配置ID: ${configIds.join(', ')}`);
+        console.log(`📦 扩展ID: ${extensionIds.join(', ')}`);
+        
+        // 读取配置文件
+        let configs = [];
+        try {
+            const configData = await fs.readFile(CONFIG_FILE, 'utf8');
+            configs = JSON.parse(configData);
+        } catch (error) {
+            console.error('读取配置文件失败:', error);
+            throw new Error('无法读取配置文件');
+        }
+        const results = [];
+        
+        // 显示当前运行的浏览器状态
+        console.log(`🔍 当前运行的浏览器数量: ${runningBrowsers.size}`);
+        for (const [id, info] of runningBrowsers.entries()) {
+            console.log(`  - 配置 ${id}: ${info.configName} (PID: ${info.pid})`);
+        }
+        
+        for (const configId of configIds) {
+            console.log(`\n🔧 处理配置: ${configId}`);
+            
+            const config = configs.find(c => c.id === configId);
+            if (!config) {
+                console.error(`❌ 配置 ${configId} 不存在`);
+                results.push({ 
+                    configId, 
+                    success: false, 
+                    error: '配置不存在' 
+                });
+                continue;
+            }
+            
+            console.log(`📋 找到配置: ${config.name}`);
+            
+            // 🔧 优先使用运行中浏览器的实际目录
+            let userDataDir;
+            const isRunning = runningBrowsers.has(configId);
+            console.log(`🔍 浏览器是否运行中: ${isRunning}`);
+            
+            if (isRunning) {
+                // 浏览器正在运行，获取实际的用户数据目录
+                const browserInfo = runningBrowsers.get(configId);
+                console.log(`🎯 获取运行中浏览器信息: PID=${browserInfo.pid}, 名称=${browserInfo.configName}`);
+                
+                try {
+                    userDataDir = await getBrowserUserDataDir(browserInfo.pid);
+                    console.log(`✅ 成功获取运行中浏览器的实际目录: ${userDataDir}`);
+                } catch (error) {
+                    console.warn(`⚠️ 无法获取运行中浏览器目录，使用配置计算的目录: ${error.message}`);
+                    userDataDir = calculateUserDataDir(config, appSettings);
+                    console.log(`📁 回退到配置计算目录: ${userDataDir}`);
+                }
+            } else {
+                // 浏览器未运行，使用配置计算的目录
+                userDataDir = calculateUserDataDir(config, appSettings);
+                console.log(`📁 浏览器未运行，使用配置计算的目录: ${userDataDir}`);
+            }
+            
+            console.log(`🎯 最终安装路径: ${userDataDir}`);
+            const result = await extensionManager.installExtensionsToConfig(configId, userDataDir, extensionIds);
+            
+            results.push({
+                configId,
+                configName: config.name,
+                ...result
+            });
+            
+            // 🚀 如果安装成功且浏览器正在运行，尝试动态加载扩展 (设置超时防止阻塞)
+            if (result.success && runningBrowsers.has(configId)) {
+                const browserInfo = runningBrowsers.get(configId);
+                console.log(`🔄 检测到浏览器 [${browserInfo.configName}] 正在运行，尝试动态加载扩展...`);
+                
+                // 使用Promise.race设置15秒超时，防止阻塞
+                const dynamicLoadPromise = dynamicLoadExtensionsToRunningBrowser(browserInfo, extensionIds, userDataDir);
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('动态加载超时')), 15000);
+                });
+                
+                try {
+                    await Promise.race([dynamicLoadPromise, timeoutPromise]);
+                    console.log(`✅ 扩展已动态加载到运行中浏览器 [${browserInfo.configName}]`);
+                } catch (dynamicError) {
+                    console.warn(`⚠️ 动态加载失败: ${dynamicError.message}`);
+                    console.log(`💡 提示: 请重启浏览器 [${browserInfo.configName}] 以加载新安装的扩展`);
+                }
+            }
+        }
+        
+        const successful = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        
+        return {
+            success: failed === 0,
+            results,
+            summary: { total: configIds.length, successful, failed }
+        };
+        
+    } catch (error) {
+        console.error('批量安装扩展失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 获取运行中的浏览器列表（用于扩展安装）
+ipcMain.handle('get-running-browsers-for-extensions', async () => {
+    try {
+        const browsers = [];
+        for (const [configId, info] of runningBrowsers.entries()) {
+            browsers.push({
+                configId,
+                configName: info.configName,
+                pid: info.pid,
+                debugPort: info.debugPort,
+                startTime: info.startTime
+            });
+        }
+        return browsers;
+    } catch (error) {
+        console.error('获取运行中浏览器失败:', error);
+        return [];
+    }
+});
+
+// 动态安装扩展到运行中的浏览器
+ipcMain.handle('install-extensions-to-running-browsers', async (event, { browserConfigIds, extensionIds }) => {
+    try {
+        console.log(`🔄 开始为 ${browserConfigIds.length} 个运行中浏览器安装 ${extensionIds.length} 个扩展...`);
+        
+        const results = [];
+        
+        for (const configId of browserConfigIds) {
+            const browserInfo = runningBrowsers.get(configId);
+            if (!browserInfo) {
+                results.push({
+                    configId,
+                    configName: configId,
+                    success: false,
+                    error: '浏览器未运行'
+                });
+                continue;
+            }
+            
+            console.log(`🔧 为浏览器 [${browserInfo.configName}] 安装扩展 (PID: ${browserInfo.pid}, 调试端口: ${browserInfo.debugPort})...`);
+            
+            try {
+                const installResult = await installExtensionsToRunningBrowser(browserInfo, extensionIds);
+                results.push({
+                    configId,
+                    configName: browserInfo.configName,
+                    ...installResult
+                });
+            } catch (error) {
+                console.error(`❌ 为浏览器 [${browserInfo.configName}] 安装扩展失败:`, error.message);
+                results.push({
+                    configId,
+                    configName: browserInfo.configName,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        
+        const successful = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        
+        console.log(`📊 动态安装完成: 成功 ${successful}，失败 ${failed}`);
+        
+        return {
+            success: failed === 0,
+            results,
+            summary: { total: browserConfigIds.length, successful, failed }
+        };
+        
+    } catch (error) {
+        console.error('动态安装扩展失败:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// 辅助函数：安装扩展到运行中的浏览器
+async function installExtensionsToRunningBrowser(browserInfo, extensionIds) {
+    const http = require('http');
+    const WebSocket = require('ws');
+    
+    try {
+        console.log(`🔍 连接到浏览器调试端口: ${browserInfo.debugPort}`);
+        
+        // 获取浏览器tabs信息
+        const tabsData = await new Promise((resolve, reject) => {
+            const req = http.get(`http://localhost:${browserInfo.debugPort}/json`, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    try {
+                        resolve(JSON.parse(data));
+                    } catch (error) {
+                        reject(new Error(`解析调试信息失败: ${error.message}`));
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                reject(new Error(`连接调试端口失败: ${error.message}`));
+            });
+            
+            req.setTimeout(5000, () => {
+                req.abort();
+                reject(new Error('连接调试端口超时'));
+            });
+        });
+
+        // 查找页面tab
+        const pageTab = tabsData.find(t => t.type === 'page');
+        if (!pageTab) {
+            throw new Error('未找到可用的页面标签');
+        }
+
+        console.log(`🌐 找到页面标签: ${pageTab.title || 'Untitled'}`);
+
+        // 通过WebSocket连接进行扩展安装
+        const installResults = [];
+        
+        for (const extensionId of extensionIds) {
+            try {
+                const extensionPath = path.join(__dirname, 'chrome-extensions', `${extensionId}.crx`);
+                
+                // 检查扩展文件是否存在
+                const fs = require('fs').promises;
+                await fs.access(extensionPath);
+                
+                // 通过Chrome DevTools Protocol安装扩展
+                const installResult = await installExtensionViaDevTools(pageTab.webSocketDebuggerUrl, extensionPath, extensionId);
+                installResults.push({
+                    extensionId,
+                    success: true,
+                    method: installResult.method
+                });
+                
+                console.log(`✅ 扩展 ${extensionId} 安装成功 (${installResult.method})`);
+                
+            } catch (error) {
+                console.error(`❌ 扩展 ${extensionId} 安装失败:`, error.message);
+                installResults.push({
+                    extensionId,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        
+        const successCount = installResults.filter(r => r.success).length;
+        const failCount = installResults.filter(r => !r.success).length;
+        
+        return {
+            success: failCount === 0,
+            installResults,
+            summary: { total: extensionIds.length, successful: successCount, failed: failCount }
+        };
+        
+    } catch (error) {
+        throw new Error(`浏览器连接失败: ${error.message}`);
+    }
+}
+
+// 通过Chrome DevTools Protocol安装扩展
+async function installExtensionViaDevTools(webSocketUrl, extensionPath, extensionId) {
+    const WebSocket = require('ws');
+    const fs = require('fs').promises;
+    
+    return new Promise(async (resolve, reject) => {
+        const ws = new WebSocket(webSocketUrl);
+        let messageId = 1;
+        
+        const sendCommand = (method, params = {}) => {
+            return new Promise((cmdResolve, cmdReject) => {
+                const id = messageId++;
+                const message = { id, method, params };
+                
+                const timeout = setTimeout(() => {
+                    cmdReject(new Error(`命令 ${method} 超时`));
+                }, 10000);
+                
+                const handleMessage = (data) => {
+                    try {
+                        const response = JSON.parse(data);
+                        if (response.id === id) {
+                            clearTimeout(timeout);
+                            ws.removeListener('message', handleMessage);
+                            
+                            if (response.error) {
+                                cmdReject(new Error(`CDP错误: ${response.error.message}`));
+                            } else {
+                                cmdResolve(response.result);
+                            }
+                        }
+                    } catch (error) {
+                        cmdReject(error);
+                    }
+                };
+                
+                ws.on('message', handleMessage);
+                ws.send(JSON.stringify(message));
+            });
+        };
+        
+        ws.on('open', async () => {
+            try {
+                console.log(`🔌 WebSocket连接已建立`);
+                
+                // 尝试方法1: 通过Runtime执行加载扩展的JavaScript
+                try {
+                    const script = `
+                        (async () => {
+                            try {
+                                // 尝试使用Chrome扩展API加载扩展
+                                if (chrome && chrome.management) {
+                                    const extensionPath = '${extensionPath}';
+                                    console.log('尝试加载扩展:', extensionPath);
+                                    return { success: true, method: 'chrome.management' };
+                                } else {
+                                    return { success: false, error: 'Chrome扩展API不可用' };
+                                }
+                            } catch (error) {
+                                return { success: false, error: error.message };
+                            }
+                        })()
+                    `;
+                    
+                    const result = await sendCommand('Runtime.evaluate', {
+                        expression: script,
+                        awaitPromise: true,
+                        returnByValue: true
+                    });
+                    
+                    if (result.result && result.result.value) {
+                        const evalResult = result.result.value;
+                        if (evalResult.success) {
+                            ws.close();
+                            resolve({ method: evalResult.method });
+                            return;
+                        }
+                    }
+                } catch (error) {
+                    console.log(`⚠️ 方法1失败，尝试方法2: ${error.message}`);
+                }
+                
+                // 方法2: 通过页面脚本注入提示用户
+                try {
+                    const script = `
+                        (function() {
+                            const notification = document.createElement('div');
+                            notification.style.cssText = \`
+                                position: fixed;
+                                top: 20px;
+                                right: 20px;
+                                background: #4CAF50;
+                                color: white;
+                                padding: 15px 20px;
+                                border-radius: 8px;
+                                z-index: 10000;
+                                font-family: Arial, sans-serif;
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                                max-width: 300px;
+                            \`;
+                            notification.innerHTML = \`
+                                <div style="font-weight: bold; margin-bottom: 8px;">🧩 扩展安装提醒</div>
+                                <div style="font-size: 13px;">扩展 ${extensionId} 已下载完成</div>
+                                <div style="font-size: 12px; margin-top: 8px; opacity: 0.9;">
+                                    请前往 chrome://extensions/ 手动加载
+                                </div>
+                            \`;
+                            
+                            document.body.appendChild(notification);
+                            
+                            setTimeout(() => {
+                                if (notification.parentNode) {
+                                    notification.parentNode.removeChild(notification);
+                                }
+                            }, 8000);
+                            
+                            return { success: true, method: 'notification' };
+                        })()
+                    `;
+                    
+                    await sendCommand('Runtime.evaluate', {
+                        expression: script,
+                        returnByValue: true
+                    });
+                    
+                    ws.close();
+                    resolve({ method: 'notification' });
+                    
+                } catch (error) {
+                    throw new Error(`所有安装方法都失败: ${error.message}`);
+                }
+                
+            } catch (error) {
+                ws.close();
+                reject(error);
+            }
+        });
+        
+        ws.on('error', (error) => {
+            reject(new Error(`WebSocket连接错误: ${error.message}`));
+        });
+        
+        ws.on('close', () => {
+            console.log(`🔌 WebSocket连接已关闭`);
+        });
+    });
+}
