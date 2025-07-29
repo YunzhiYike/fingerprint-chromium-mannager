@@ -2828,7 +2828,8 @@ class ChromeExtensionManager {
         // 显示详细结果
         result.results.forEach(res => {
             if (res.success) {
-                this.addLog('success', `✅ ${res.fileName}: 下载成功`);
+                const extensionName = res.extensionName || res.fileName || res.extensionId;
+                this.addLog('success', `✅ ${extensionName}: 下载成功`);
             } else {
                 this.addLog('error', `❌ ${res.extensionId}: ${res.error}`);
             }

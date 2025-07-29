@@ -1520,27 +1520,46 @@ body {
 .task-title-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
 }
 
 .task-title {
-    font-size: 24px;
-    font-weight: 700;
+    font-size: 32px;
+    font-weight: 800;
     margin: 0;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    letter-spacing: 1px;
 }
 
 .task-title i {
-    font-size: 26px;
-    opacity: 0.9;
+    font-size: 36px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 4px 8px rgba(103, 126, 234, 0.3));
+    animation: iconFloat 3s ease-in-out infinite;
+}
+
+@keyframes iconFloat {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
 }
 
 .task-subtitle {
-    font-size: 14px;
-    opacity: 0.8;
-    font-weight: 400;
+    font-size: 16px;
+    opacity: 0.9;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    letter-spacing: 0.5px;
 }
 
 .task-actions {
@@ -1552,58 +1571,88 @@ body {
 .header-btn {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
+    gap: 10px;
+    padding: 12px 20px;
     border: none;
-    border-radius: 6px;
+    border-radius: 25px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     text-decoration: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(5px);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+}
+
+.header-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.5s;
+}
+
+.header-btn:hover::before {
+    left: 100%;
 }
 
 .header-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
 }
 
 .header-btn.primary {
-    background: #007bff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
 }
 
 .header-btn.primary:hover {
-    background: #0056b3;
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
 }
 
 .header-btn.success {
-    background: #28a745;
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
     color: white;
 }
 
 .header-btn.success:hover {
-    background: #1e7e34;
+    background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+}
+
+.header-btn.warning {
+    background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+    color: white;
+}
+
+.header-btn.warning:hover {
+    background: linear-gradient(135deg, #dd6b20 0%, #c05621 100%);
 }
 
 .header-btn.danger {
-    background: #dc3545;
+    background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
     color: white;
 }
 
 .header-btn.danger:hover {
-    background: #bd2130;
+    background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
 }
 
 .header-btn.default {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.25);
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 .header-btn.default:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.35);
+    border-color: rgba(255, 255, 255, 0.6);
 }
 
 .header-btn:disabled {
@@ -2198,30 +2247,7 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-.task-title-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.task-title {
-    color: #303133;
-    font-size: 24px;
-    font-weight: 600;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.task-title i {
-    color: #f39c12;
-}
-
-.task-subtitle {
-    color: #909399;
-    font-size: 14px;
-}
+/* 移除重复定义，使用上面的扩展管理页面样式 */
 
 .task-actions {
     display: flex;
@@ -2697,7 +2723,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: #ffffff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     z-index: 1000;
     display: flex;
     flex-direction: column;
@@ -2706,70 +2732,107 @@ body {
 }
 
 .extensions-header {
-    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 20px 30px;
+    padding: 25px 35px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(103, 126, 234, 0.37);
+    backdrop-filter: blur(4px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .extensions-content {
     flex: 1;
-    padding: 20px;
-    background: #f8f9fa;
+    padding: 30px 35px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     min-height: 0;
+    overflow-y: auto;
 }
 
 .extensions-tabs {
-    background: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    margin-bottom: 25px;
     overflow: hidden;
 }
 
 .tab-nav {
     display: flex;
-    background: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+    background: rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
 }
 
 .tab-btn {
     flex: 1;
-    padding: 15px 20px;
+    padding: 18px 25px;
     background: none;
     border: none;
     cursor: pointer;
-    color: #6c757d;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.3s ease;
+    color: #4a5568;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
+    position: relative;
+    overflow: hidden;
+}
+
+.tab-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+}
+
+.tab-btn:hover::before {
+    left: 100%;
 }
 
 .tab-btn:hover {
-    background: #e9ecef;
-    color: #495057;
+    background: rgba(255, 255, 255, 0.2);
+    color: #2d3748;
+    transform: translateY(-2px);
 }
 
 .tab-btn.active {
-    background: #4CAF50;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);
+    box-shadow: 0 4px 15px 0 rgba(103, 126, 234, 0.75);
+    transform: translateY(-3px);
 }
 
 .tab-content {
     display: none;
-    padding: 20px;
+    padding: 25px;
+    animation: fadeIn 0.3s ease-in-out;
 }
 
 .tab-content.active {
     display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .extensions-filters {
@@ -2822,176 +2885,245 @@ body {
 
 .extensions-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 16px;
-    margin-bottom: 20px;
-    max-height: 350px;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 24px;
+    margin-bottom: 30px;
+    max-height: 450px;
     overflow-y: auto;
-    padding: 8px;
-    border: 1px solid #e9ecef;
-    border-radius: 6px;
-    background: #fafafa;
+    padding: 20px;
+    border: none;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(15px);
+    box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.1);
 }
 
 .extension-card {
-    background: white;
-    border: 1px solid #e9ecef;
-    border-radius: 8px;
-    padding: 16px;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    padding: 24px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 40px 0 rgba(31, 38, 135, 0.25);
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+}
+
+.extension-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
 }
 
 .extension-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    border-color: #4CAF50;
+    transform: translateY(-8px);
+    box-shadow: 0 20px 40px 0 rgba(31, 38, 135, 0.5);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.extension-card:hover::before {
+    transform: scaleX(1);
 }
 
 .extension-card.downloaded {
-    border-color: #28a745;
-    background: #f8fff9;
+    border-color: rgba(72, 187, 120, 0.5);
+    background: linear-gradient(135deg, rgba(72, 187, 120, 0.1) 0%, rgba(255, 255, 255, 0.9) 100%);
+}
+
+.extension-card.downloaded::before {
+    background: linear-gradient(90deg, #48bb78, #38a169);
 }
 
 .extension-card.custom {
-    border-color: #ffc107;
-    background: #fffbf0;
+    border-color: rgba(237, 137, 54, 0.5);
+    background: linear-gradient(135deg, rgba(237, 137, 54, 0.1) 0%, rgba(255, 255, 255, 0.9) 100%);
+}
+
+.extension-card.custom::before {
+    background: linear-gradient(90deg, #ed8936, #dd6b20);
 }
 
 .extension-header {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 12px;
+    gap: 16px;
+    margin-bottom: 16px;
 }
 
 .extension-checkbox {
-    margin-top: 4px;
+    margin-top: 6px;
     cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: #667eea;
+    border-radius: 4px;
 }
 
 .extension-info {
     flex: 1;
+    min-width: 0;
 }
 
-.extension-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: #212529;
-    margin: 0 0 4px 0;
-    line-height: 1.2;
-}
+
 
 .extension-category {
     display: inline-block;
-    background: #e9ecef;
-    color: #6c757d;
-    padding: 2px 8px;
-    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(103, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%);
+    color: #4c51bf;
+    padding: 4px 12px;
+    border-radius: 20px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
+    border: 1px solid rgba(103, 126, 234, 0.3);
 }
 
 .extension-status {
     display: inline-block;
-    background: #d4edda;
-    color: #155724;
-    padding: 2px 8px;
-    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(72, 187, 120, 0.2) 0%, rgba(56, 161, 105, 0.2) 100%);
+    color: #38a169;
+    padding: 4px 12px;
+    border-radius: 20px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
+    border: 1px solid rgba(72, 187, 120, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.extension-status::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #38a169;
+    animation: pulse 2s infinite;
 }
 
 .extension-meta {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
     flex-wrap: wrap;
 }
 
 .extension-version {
     display: inline-block;
-    background: #e3f2fd;
-    color: #0d47a1;
-    padding: 2px 8px;
-    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(66, 153, 225, 0.2) 0%, rgba(49, 130, 206, 0.2) 100%);
+    color: #3182ce;
+    padding: 4px 12px;
+    border-radius: 20px;
     font-size: 11px;
-    font-weight: 500;
+    font-weight: 600;
+    border: 1px solid rgba(66, 153, 225, 0.3);
 }
 
 .extension-body {
-    margin-bottom: 12px;
+    margin-bottom: 16px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
-.extension-description {
-    color: #6c757d;
-    font-size: 13px;
-    line-height: 1.4;
-    margin-bottom: 8px;
-}
 
-.extension-id, .extension-file {
-    font-size: 11px;
-    color: #9ca3af;
-    font-family: monospace;
-    background: #f8f9fa;
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin-bottom: 4px;
-}
+
+
 
 .extension-actions {
     display: flex;
-    gap: 8px;
+    gap: 12px;
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .action-btn {
-    padding: 6px 12px;
+    padding: 8px 16px;
     border: none;
-    border-radius: 4px;
+    border-radius: 25px;
     cursor: pointer;
     font-size: 12px;
-    font-weight: 500;
-    transition: all 0.3s ease;
+    font-weight: 600;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.action-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.5s;
+}
+
+.action-btn:hover::before {
+    left: 100%;
 }
 
 .action-btn.download {
-    background: #007bff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+    box-shadow: 0 4px 15px 0 rgba(103, 126, 234, 0.75);
 }
 
 .action-btn.download:hover {
-    background: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(103, 126, 234, 0.9);
 }
 
 .action-btn.install {
-    background: #28a745;
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
     color: white;
+    box-shadow: 0 4px 15px 0 rgba(72, 187, 120, 0.75);
 }
 
 .action-btn.install:hover {
-    background: #1e7e34;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(72, 187, 120, 0.9);
 }
 
 .action-btn.remove {
-    background: #dc3545;
+    background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
     color: white;
+    box-shadow: 0 4px 15px 0 rgba(245, 101, 101, 0.75);
 }
 
 .action-btn.remove:hover {
-    background: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(245, 101, 101, 0.9);
 }
 
 .action-btn.delete {
-    background: #dc3545;
+    background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
     color: white;
+    box-shadow: 0 4px 15px 0 rgba(245, 101, 101, 0.75);
 }
 
 .action-btn.delete:hover {
-    background: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(245, 101, 101, 0.9);
 }
 
 .downloaded-header {
@@ -3017,51 +3149,216 @@ body {
 }
 
 .custom-extension-form {
-    background: #f8f9fa;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    border: 1px solid #e9ecef;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 25px;
+    border-radius: 16px;
+    margin-bottom: 25px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    backdrop-filter: blur(8px);
 }
 
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 }
 
 .form-label {
     display: block;
-    margin-bottom: 6px;
-    color: #495057;
-    font-weight: 500;
+    margin-bottom: 8px;
+    color: #4a5568;
+    font-weight: 600;
     font-size: 14px;
+    letter-spacing: 0.5px;
 }
 
 .form-input {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
+    padding: 12px 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
     font-size: 14px;
-    transition: border-color 0.3s ease;
+    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(5px);
 }
 
 .form-input:focus {
     outline: none;
-    border-color: #4CAF50;
-    box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(103, 126, 234, 0.3);
+    background: rgba(255, 255, 255, 0.95);
 }
 
 .form-btn {
-    padding: 10px 20px;
+    padding: 12px 24px;
     border: none;
-    border-radius: 4px;
+    border-radius: 25px;
     cursor: pointer;
     font-size: 14px;
+    font-weight: 600;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    box-shadow: 0 4px 15px 0 rgba(103, 126, 234, 0.75);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+}
+
+.form-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.5s;
+}
+
+.form-btn:hover::before {
+    left: 100%;
+}
+
+.form-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px 0 rgba(103, 126, 234, 0.9);
+}
+
+/* 美化扩展管理页面滚动条 */
+.extensions-page::-webkit-scrollbar,
+.extensions-grid::-webkit-scrollbar {
+    width: 8px;
+}
+
+.extensions-page::-webkit-scrollbar-track,
+.extensions-grid::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.extensions-page::-webkit-scrollbar-thumb,
+.extensions-grid::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+    box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.3);
+}
+
+.extensions-page::-webkit-scrollbar-thumb:hover,
+.extensions-grid::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+}
+
+/* 扩展名称样式优化 */
+.extension-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0 0 6px 0;
+    line-height: 1.3;
+    background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* 扩展描述样式优化 */
+.extension-description {
+    color: #718096;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+    font-weight: 400;
+}
+
+/* ID和文件信息样式优化 */
+.extension-id, .extension-file {
+    font-size: 11px;
+    color: #a0aec0;
+    font-family: 'Courier New', monospace;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 6px 10px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(5px);
+}
+
+/* 扩展管理页面头部标题美化 */
+.extensions-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+    background: linear-gradient(135deg, #ffffff 0%, #f7fafc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    letter-spacing: 1px;
+}
+
+/* 关闭按钮美化 */
+.extensions-header .btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.extensions-header .btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+}
+
+/* 过滤器组件美化 */
+.filter-select {
+    padding: 10px 15px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #4a5568;
+    min-width: 140px;
     font-weight: 500;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(5px);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(103, 126, 234, 0.3);
+}
+
+.filter-btn {
+    padding: 10px 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.9);
+    color: #4a5568;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
     gap: 8px;
+    backdrop-filter: blur(5px);
+}
+
+.filter-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    border-color: #667eea;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(103, 126, 234, 0.2);
 }
 
 .form-btn.primary {

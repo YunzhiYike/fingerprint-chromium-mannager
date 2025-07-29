@@ -267,9 +267,20 @@ class ChromeExtensionManager {
       let extensionVersionDir;
       
       try {
-        // 解压到临时目录读取manifest
-        const tempCommand = `unzip -q "${tempZipPath}" -d "${tempExtractDir}"`;
-        await execAsync(tempCommand);
+        console.log(`🔄 开始解压扩展 ${extensionId}，平台: ${process.platform}`);
+        
+        // 跨平台解压到临时目录读取manifest
+        if (process.platform === 'win32') {
+          // Windows: 使用PowerShell
+          const tempCommand = `powershell -Command "Expand-Archive -Path '${tempZipPath}' -DestinationPath '${tempExtractDir}' -Force"`;
+          console.log(`🖥️ Windows解压命令: ${tempCommand}`);
+          await execAsync(tempCommand);
+        } else {
+          // Unix/Linux/macOS: 使用unzip
+          const tempCommand = `unzip -q "${tempZipPath}" -d "${tempExtractDir}"`;
+          console.log(`🐧 Unix解压命令: ${tempCommand}`);
+          await execAsync(tempCommand);
+        }
         
         // 读取manifest获取版本
         const manifestPath = path.join(tempExtractDir, 'manifest.json');
@@ -288,24 +299,31 @@ class ChromeExtensionManager {
         
         console.log(`📁 已创建目录: ${extensionVersionDir}`);
         
-        // 解压扩展到最终目录
-        const finalCommand = `unzip -q "${tempZipPath}" -d "${extensionVersionDir}"`;
-        console.log(`🔄 执行最终解压命令: ${finalCommand}`);
-        console.log(`🖥️ 当前平台: ${process.platform}`);
-        console.log(`📂 解压目标: ${extensionVersionDir}`);
-        
-        const { stdout, stderr } = await execAsync(finalCommand);
-        
-        console.log(`📋 解压命令stdout: ${stdout || '(空)'}`);
-        console.log(`📋 解压命令stderr: ${stderr || '(空)'}`);
+        // 跨平台解压扩展到最终目录
+        if (process.platform === 'win32') {
+          // Windows: 使用PowerShell
+          const finalCommand = `powershell -Command "Expand-Archive -Path '${tempZipPath}' -DestinationPath '${extensionVersionDir}' -Force"`;
+          console.log(`🔄 Windows最终解压命令: ${finalCommand}`);
+          const { stdout, stderr } = await execAsync(finalCommand);
+          console.log(`📋 Windows解压结果: stdout=${stdout || '(空)'}, stderr=${stderr || '(空)'}`);
+        } else {
+          // Unix/Linux/macOS: 使用unzip
+          const finalCommand = `unzip -q "${tempZipPath}" -d "${extensionVersionDir}"`;
+          console.log(`🔄 Unix最终解压命令: ${finalCommand}`);
+          const { stdout, stderr } = await execAsync(finalCommand);
+          console.log(`📋 Unix解压结果: stdout=${stdout || '(空)'}, stderr=${stderr || '(空)'}`);
+          
+          if (stderr && !stderr.includes('warning')) {
+            console.warn(`⚠️ 解压时出现警告: ${stderr}`);
+          }
+        }
         
         // 验证目录中是否有文件
         const files = await fs.readdir(extensionVersionDir);
         console.log(`📂 解压后文件数量: ${files.length}`);
+        console.log(`📂 解压后文件列表: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '...' : ''}`);
         
-        if (stderr && !stderr.includes('warning')) {
-          console.warn(`⚠️ 解压时出现警告: ${stderr}`);
-        }
+        console.log(`📂 解压目标: ${extensionVersionDir}`);
         
         // 验证解压结果
         const finalManifestPath = path.join(extensionVersionDir, 'manifest.json');
@@ -420,6 +438,36 @@ class ChromeExtensionManager {
     return allExtensions.filter(ext => ext.category === category);
   }
 
+  // 跨平台解压ZIP文件中的特定文件
+  async extractFileFromZip(zipPath, fileName) {
+    try {
+      if (process.platform === 'win32') {
+        // Windows: 使用PowerShell的Expand-Archive
+        const tempDir = path.join(this.extensionsDir, `temp_extract_${Date.now()}`);
+        await fs.mkdir(tempDir, { recursive: true });
+        
+        console.log(`🖥️ Windows平台，使用PowerShell解压: ${zipPath}`);
+        const command = `powershell -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${tempDir}' -Force"`;
+        await execAsync(command);
+        
+        const filePath = path.join(tempDir, fileName);
+        const content = await fs.readFile(filePath, 'utf8');
+        
+        // 清理临时目录
+        await fs.rm(tempDir, { recursive: true, force: true });
+        
+        return content;
+      } else {
+        // Unix/Linux/macOS: 使用unzip
+        console.log(`🐧 Unix平台，使用unzip: ${zipPath}`);
+        const { stdout } = await execAsync(`unzip -p "${zipPath}" "${fileName}"`);
+        return stdout;
+      }
+    } catch (error) {
+      throw new Error(`无法提取文件 ${fileName}: ${error.message}`);
+    }
+  }
+
   // 获取已下载的扩展
   async getDownloadedExtensions() {
     try {
@@ -438,13 +486,17 @@ class ChromeExtensionManager {
         // 如果推荐列表中没有，就从CRX文件中读取manifest.json
         if (!extensionInfo) {
           try {
+            console.log(`📋 正在读取扩展 ${extensionId} 的manifest信息...`);
+            
             const zipData = await this.extractZipFromCrx(filePath);
             const tempZipPath = path.join(this.extensionsDir, `temp_manifest_${extensionId}.zip`);
             await fs.writeFile(tempZipPath, zipData);
             
-            // 提取manifest.json
-            const { stdout } = await execAsync(`unzip -p "${tempZipPath}" manifest.json`);
-            const manifest = JSON.parse(stdout);
+            // 跨平台提取manifest.json
+            const manifestContent = await this.extractFileFromZip(tempZipPath, 'manifest.json');
+            const manifest = JSON.parse(manifestContent);
+            
+            console.log(`📋 成功读取manifest: ${manifest.name || extensionId}`);
             
             // 处理国际化消息
             let displayName = manifest.name || extensionId;
@@ -453,14 +505,17 @@ class ChromeExtensionManager {
               try {
                 const defaultLocale = manifest.default_locale || 'en';
                 const messagesPath = `_locales/${defaultLocale}/messages.json`;
-                const { stdout: messagesStdout } = await execAsync(`unzip -p "${tempZipPath}" "${messagesPath}"`);
-                const messages = JSON.parse(messagesStdout);
+                console.log(`📋 尝试读取国际化消息: ${messagesPath}`);
+                
+                const messagesContent = await this.extractFileFromZip(tempZipPath, messagesPath);
+                const messages = JSON.parse(messagesContent);
                 const messageKey = displayName.slice(6, -2); // 移除 __MSG_ 和 __
                 if (messages[messageKey] && messages[messageKey].message) {
                   displayName = messages[messageKey].message;
+                  console.log(`📋 成功解析国际化名称: ${displayName}`);
                 }
               } catch (i18nError) {
-                console.log(`📋 无法解析国际化消息 ${displayName}，使用原始名称`);
+                console.log(`📋 无法解析国际化消息 ${displayName}，使用原始名称: ${i18nError.message}`);
               }
             }
             
@@ -469,6 +524,8 @@ class ChromeExtensionManager {
               description: manifest.description || '从扩展文件读取',
               version: manifest.version
             };
+            
+            console.log(`✅ 扩展信息解析完成: ${displayName} (${manifest.version})`);
             
             // 清理临时文件
             await fs.unlink(tempZipPath).catch(() => {});
