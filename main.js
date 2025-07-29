@@ -1167,8 +1167,25 @@ async function createExtensionPreferences(userDataDir, extensionIds) {
 function calculateUserDataDir(config, appSettings) {
   const defaultRoot = appSettings.defaultUserDataRoot;
   const rootPath = config.userDataRoot || defaultRoot;
-  const randomFolder = config.randomFolder || `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-  return path.join(rootPath, randomFolder);
+  
+  console.log('🗂️ calculateUserDataDir调试信息:');
+  console.log('  - 配置ID:', config.id);
+  console.log('  - 配置名称:', config.name);
+  console.log('  - 配置的randomFolder:', config.randomFolder);
+  
+  let randomFolder = config.randomFolder;
+  if (!randomFolder) {
+    randomFolder = `browser-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    console.log('  ⚠️ 配置缺失randomFolder，生成新的:', randomFolder);
+    console.log('  🚨 警告：这可能导致扩展安装路径不一致！');
+  } else {
+    console.log('  ✅ 使用配置中的randomFolder:', randomFolder);
+  }
+  
+  const fullPath = path.join(rootPath, randomFolder);
+  console.log('  - 最终用户数据目录:', fullPath);
+  
+  return fullPath;
 }
 
 // 通过进程ID获取浏览器实际使用的用户数据目录
@@ -2550,6 +2567,25 @@ ipcMain.handle('get-downloaded-extensions', async () => {
     } catch (error) {
         console.error('获取已下载扩展失败:', error);
         return [];
+    }
+});
+
+// 删除已下载的扩展
+ipcMain.handle('delete-extension', async (event, extensionId) => {
+    try {
+        console.log(`🗑️ 删除扩展请求: ${extensionId}`);
+        const result = await extensionManager.deleteExtension(extensionId);
+        
+        if (result.success) {
+            console.log(`✅ 扩展删除成功: ${extensionId}`);
+        } else {
+            console.error(`❌ 扩展删除失败: ${result.error}`);
+        }
+        
+        return result;
+    } catch (error) {
+        console.error('删除扩展失败:', error);
+        return { success: false, error: error.message };
     }
 });
 

@@ -2902,6 +2902,23 @@ body {
     font-weight: 500;
 }
 
+.extension-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.extension-version {
+    display: inline-block;
+    background: #e3f2fd;
+    color: #0d47a1;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
 .extension-body {
     margin-bottom: 12px;
 }
@@ -2965,6 +2982,15 @@ body {
 }
 
 .action-btn.remove:hover {
+    background: #c82333;
+}
+
+.action-btn.delete {
+    background: #dc3545;
+    color: white;
+}
+
+.action-btn.delete:hover {
     background: #c82333;
 }
 

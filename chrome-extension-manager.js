@@ -428,11 +428,56 @@ class ChromeExtensionManager {
       
       const recommendedExtensions = this.getRecommendedExtensions();
       
-      return crxFiles.map(file => {
+      const extensionsPromises = crxFiles.map(async file => {
         const extensionId = path.basename(file, '.crx');
+        const filePath = path.join(this.extensionsDir, file);
         
         // 尝试从推荐扩展中找到对应的信息
-        const extensionInfo = recommendedExtensions.find(ext => ext.id === extensionId);
+        let extensionInfo = recommendedExtensions.find(ext => ext.id === extensionId);
+        
+        // 如果推荐列表中没有，就从CRX文件中读取manifest.json
+        if (!extensionInfo) {
+          try {
+            const zipData = await this.extractZipFromCrx(filePath);
+            const tempZipPath = path.join(this.extensionsDir, `temp_manifest_${extensionId}.zip`);
+            await fs.writeFile(tempZipPath, zipData);
+            
+            // 提取manifest.json
+            const { stdout } = await execAsync(`unzip -p "${tempZipPath}" manifest.json`);
+            const manifest = JSON.parse(stdout);
+            
+            // 处理国际化消息
+            let displayName = manifest.name || extensionId;
+            if (displayName.startsWith('__MSG_') && displayName.endsWith('__')) {
+              // 尝试读取默认语言的消息
+              try {
+                const defaultLocale = manifest.default_locale || 'en';
+                const messagesPath = `_locales/${defaultLocale}/messages.json`;
+                const { stdout: messagesStdout } = await execAsync(`unzip -p "${tempZipPath}" "${messagesPath}"`);
+                const messages = JSON.parse(messagesStdout);
+                const messageKey = displayName.slice(6, -2); // 移除 __MSG_ 和 __
+                if (messages[messageKey] && messages[messageKey].message) {
+                  displayName = messages[messageKey].message;
+                }
+              } catch (i18nError) {
+                console.log(`📋 无法解析国际化消息 ${displayName}，使用原始名称`);
+              }
+            }
+            
+            extensionInfo = {
+              name: displayName,
+              description: manifest.description || '从扩展文件读取',
+              version: manifest.version
+            };
+            
+            // 清理临时文件
+            await fs.unlink(tempZipPath).catch(() => {});
+            
+          } catch (manifestError) {
+            console.warn(`⚠️ 无法读取扩展 ${extensionId} 的manifest:`, manifestError.message);
+            extensionInfo = null;
+          }
+        }
         
         return {
           filename: file,
@@ -440,13 +485,63 @@ class ChromeExtensionManager {
           fileName: file,
           displayName: extensionInfo ? extensionInfo.name : extensionId,
           description: extensionInfo ? extensionInfo.description : '未知扩展',
-          path: path.join(this.extensionsDir, file),
+          version: extensionInfo ? extensionInfo.version : '',
+          path: filePath,
           size: 0 // 可以添加文件大小信息
         };
       });
+      
+      return await Promise.all(extensionsPromises);
     } catch (error) {
       console.error('获取已下载扩展失败:', error);
       return [];
+    }
+  }
+
+  // 删除已下载的扩展
+  async deleteExtension(extensionId) {
+    try {
+      const crxFilePath = path.join(this.extensionsDir, `${extensionId}.crx`);
+      
+      // 检查文件是否存在
+      try {
+        await fs.access(crxFilePath);
+      } catch (error) {
+        return {
+          success: false,
+          error: '扩展文件不存在'
+        };
+      }
+      
+      // 删除CRX文件
+      await fs.unlink(crxFilePath);
+      
+      // 清理可能存在的临时文件
+      const tempFiles = [
+        path.join(this.extensionsDir, `temp_${extensionId}.zip`),
+        path.join(this.extensionsDir, `temp_manifest_${extensionId}.zip`)
+      ];
+      
+      for (const tempFile of tempFiles) {
+        try {
+          await fs.unlink(tempFile);
+        } catch (error) {
+          // 忽略临时文件删除失败，它们可能不存在
+        }
+      }
+      
+      console.log(`✅ 扩展删除成功: ${extensionId}`);
+      return {
+        success: true,
+        extensionId: extensionId
+      };
+      
+    } catch (error) {
+      console.error('删除扩展失败:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 

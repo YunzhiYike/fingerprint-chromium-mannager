@@ -32,8 +32,34 @@ class BrowserConfigManager {
     async loadConfigs() {
         try {
             this.configs = await ipcRenderer.invoke('load-configs');
+            
+            console.log('📋 loadConfigs调试信息:');
+            console.log('  - 加载的配置数量:', this.configs.length);
+            
+            // 验证和修复配置中缺失的randomFolder字段
+            let hasChanges = false;
+            for (let config of this.configs) {
+                console.log(`  - 配置 "${config.name}" (${config.id}) randomFolder:`, config.randomFolder);
+                
+                if (!config.randomFolder) {
+                    // 为缺失randomFolder的配置生成一个新的
+                    config.randomFolder = await ipcRenderer.invoke('generate-random-folder');
+                    hasChanges = true;
+                    console.log(`  ⚠️ 为配置 "${config.name}" 生成新的randomFolder:`, config.randomFolder);
+                }
+            }
+            
+            // 如果有修复，保存配置
+            if (hasChanges) {
+                console.log('🔧 检测到缺失的randomFolder字段，已自动修复并保存');
+                await ipcRenderer.invoke('save-configs', this.configs);
+                this.showStatus('已自动修复配置中缺失的目录信息', 'success');
+            }
+            
             this.updateConfigList();
             this.updateConfigCount();
+            
+            console.log('✅ 配置加载完成');
         } catch (error) {
             this.showStatus('加载配置失败: ' + error.message, 'error');
         }
@@ -357,6 +383,12 @@ class BrowserConfigManager {
 
     selectConfig(configId) {
         this.currentConfig = this.configs.find(c => c.id === configId);
+        
+        console.log('🔍 selectConfig调试信息:');
+        console.log('  - 选择的configId:', configId);
+        console.log('  - 找到的配置:', this.currentConfig);
+        console.log('  - 配置的randomFolder:', this.currentConfig?.randomFolder);
+        
         this.highlightConfigItem(configId);
         this.showConfigForm(this.currentConfig);
     }
@@ -398,6 +430,10 @@ class BrowserConfigManager {
     }
 
     populateForm(config) {
+        console.log('📝 populateForm调试信息:');
+        console.log('  - 填充的配置:', config);
+        console.log('  - 配置的randomFolder:', config.randomFolder);
+        
         document.getElementById('configName').value = config.name || '';
         document.getElementById('fingerprint').value = config.fingerprint || '';
         document.getElementById('platform').value = config.platform || '';
@@ -416,6 +452,8 @@ class BrowserConfigManager {
         
         // 更新路径预览
         setTimeout(() => this.updatePathPreview(config.randomFolder), 100);
+        
+        console.log('  - 表单填充完成，randomFolder传递给updatePathPreview:', config.randomFolder);
     }
 
     clearForm() {
@@ -433,22 +471,46 @@ class BrowserConfigManager {
     async saveCurrentConfig() {
         const formData = await this.getFormData();
         
+        console.log('💾 saveCurrentConfig调试信息:');
+        console.log('  - formData:', formData);
+        console.log('  - formData.randomFolder:', formData.randomFolder);
+        
         if (!formData.name.trim()) {
             this.showStatus('请输入配置名称', 'error');
             return;
         }
 
         if (this.currentConfig) {
+            console.log('  - 编辑现有配置，ID:', this.currentConfig.id);
+            console.log('  - 当前配置的randomFolder:', this.currentConfig.randomFolder);
+            
             const index = this.configs.findIndex(c => c.id === this.currentConfig.id);
             if (index !== -1) {
-                this.configs[index] = { ...this.currentConfig, ...formData };
+                // 确保保留所有重要字段，特别是randomFolder
+                const updatedConfig = { 
+                    ...this.currentConfig, 
+                    ...formData,
+                    // 明确保留一些关键字段
+                    id: this.currentConfig.id,
+                    createdAt: this.currentConfig.createdAt || new Date().toISOString(),
+                    randomFolder: formData.randomFolder // 确保使用formData中的randomFolder
+                };
+                
+                console.log('  - 更新后的配置:', updatedConfig);
+                console.log('  - 更新后的randomFolder:', updatedConfig.randomFolder);
+                
+                this.configs[index] = updatedConfig;
             }
         } else {
+            console.log('  - 创建新配置');
             const newConfig = {
                 id: uuidv4(),
                 ...formData,
                 createdAt: new Date().toISOString()
             };
+            console.log('  - 新配置:', newConfig);
+            console.log('  - 新配置的randomFolder:', newConfig.randomFolder);
+            
             this.configs.push(newConfig);
         }
 
@@ -456,16 +518,27 @@ class BrowserConfigManager {
         this.updateConfigList();
         this.updateConfigCount();
         this.hideConfigForm();
+        
+        console.log('✅ 配置保存完成');
     }
 
     async getFormData() {
         // 如果是新配置，生成随机文件夹名
         let randomFolder = this.currentConfig?.randomFolder;
+        
+        // 添加调试信息
+        console.log('🔍 getFormData调试信息:');
+        console.log('  - currentConfig:', this.currentConfig);
+        console.log('  - 现有randomFolder:', randomFolder);
+        
         if (!randomFolder) {
             randomFolder = await ipcRenderer.invoke('generate-random-folder');
+            console.log('  - 生成新randomFolder:', randomFolder);
+        } else {
+            console.log('  - 保留现有randomFolder:', randomFolder);
         }
         
-        return {
+        const formData = {
             name: document.getElementById('configName').value.trim(),
             fingerprint: document.getElementById('fingerprint').value,
             platform: document.getElementById('platform').value,
@@ -483,6 +556,9 @@ class BrowserConfigManager {
             userDataRoot: document.getElementById('userDataRoot').value,
             randomFolder: randomFolder
         };
+        
+        console.log('  - 最终formData.randomFolder:', formData.randomFolder);
+        return formData;
     }
 
     async launchBrowser() {
@@ -2401,10 +2477,14 @@ class ChromeExtensionManager {
                            ${this.selectedExtensions.has(ext.extensionId) ? 'checked' : ''}>
                     <div class="extension-info">
                         <h4 class="extension-name">${ext.displayName}</h4>
-                        <span class="extension-status">已下载</span>
+                        <div class="extension-meta">
+                            <span class="extension-status">已下载</span>
+                            ${ext.version ? `<span class="extension-version">v${ext.version}</span>` : ''}
+                        </div>
                     </div>
                 </div>
                 <div class="extension-body">
+                    ${ext.description && ext.description !== '未知扩展' ? `<p class="extension-description">${ext.description}</p>` : ''}
                     <div class="extension-id">ID: ${ext.extensionId}</div>
                     <div class="extension-file">文件: ${ext.fileName}</div>
                 </div>
@@ -2412,6 +2492,10 @@ class ChromeExtensionManager {
                     <button class="action-btn install" onclick="extensionManager.installSingleExtension('${ext.extensionId}')">
                         <i class="fas fa-plus"></i>
                         安装
+                    </button>
+                    <button class="action-btn delete" onclick="extensionManager.deleteDownloadedExtension('${ext.extensionId}')">
+                        <i class="fas fa-trash"></i>
+                        删除
                     </button>
                 </div>
             `;
@@ -3001,6 +3085,45 @@ class ChromeExtensionManager {
         } catch (error) {
             this.addLog('error', `安装扩展到运行中浏览器失败: ${error.message}`);
             this.hideProgress();
+        }
+    }
+
+    async deleteDownloadedExtension(extensionId) {
+        // 获取扩展信息用于显示
+        const extension = this.downloadedExtensions.find(ext => ext.extensionId === extensionId);
+        const extensionName = extension ? extension.displayName : extensionId;
+
+        // 确认删除
+        if (!confirm(`确定要删除扩展 "${extensionName}" 吗？\n\n此操作将删除已下载的CRX文件，无法撤销。`)) {
+            return;
+        }
+
+        this.addLog('info', `开始删除扩展: ${extensionName}`);
+
+        try {
+            const result = await ipcRenderer.invoke('delete-extension', extensionId);
+
+            if (result.success) {
+                this.addLog('success', `✅ 扩展删除成功: ${extensionName}`);
+                
+                // 从已下载列表中移除
+                this.downloadedExtensions = this.downloadedExtensions.filter(
+                    ext => ext.extensionId !== extensionId
+                );
+                
+                // 从选中列表中移除
+                this.selectedExtensions.delete(extensionId);
+                
+                // 重新渲染已下载扩展列表
+                this.renderDownloadedExtensions();
+                
+                // 更新批量按钮状态
+                this.updateBatchButtons();
+            } else {
+                this.addLog('error', `❌ 扩展删除失败: ${result.error}`);
+            }
+        } catch (error) {
+            this.addLog('error', `删除扩展失败: ${error.message}`);
         }
     }
 }
