@@ -2701,7 +2701,8 @@ body {
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .extensions-header {
@@ -2717,8 +2718,8 @@ body {
 .extensions-content {
     flex: 1;
     padding: 20px;
-    overflow-y: auto;
     background: #f8f9fa;
+    min-height: 0;
 }
 
 .extensions-tabs {
@@ -2824,6 +2825,12 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
+    max-height: 350px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    background: #fafafa;
 }
 
 .extension-card {
@@ -3080,7 +3087,7 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 12px;
     margin-top: 12px;
-    max-height: 300px;
+    max-height: 250px;
     overflow-y: auto;
     padding: 8px;
     border: 1px solid #e9ecef;
@@ -3383,6 +3390,12 @@ body {
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 8px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    background: #fafafa;
 }
 
 .running-browser-card {
@@ -3528,9 +3541,45 @@ body {
 }
 
 /* 响应式设计 */
+
+/* 中等屏幕优化 (小笔记本, 平板横屏) */
+@media (max-width: 1024px) {
+    .extensions-grid {
+        max-height: 280px;
+    }
+    
+    .running-browsers-grid {
+        max-height: 250px;
+    }
+    
+    .config-checkboxes {
+        max-height: 200px;
+    }
+    
+    .extensions-header {
+        padding: 15px 20px;
+    }
+    
+    .extensions-content {
+        padding: 15px;
+    }
+    
+    .panel-body {
+        padding: 16px;
+    }
+    
+    .installation-panel, 
+    .progress-panel, 
+    .log-panel {
+        margin-bottom: 15px;
+    }
+}
+
+/* 小屏幕优化 (手机横屏, 小平板) */
 @media (max-width: 768px) {
     .extensions-grid {
         grid-template-columns: 1fr;
+        max-height: 250px;
     }
     
     .config-checkboxes {
@@ -3539,6 +3588,21 @@ body {
     
     .running-browsers-grid {
         grid-template-columns: 1fr;
+        max-height: 200px;
+    }
+    
+    .config-checkboxes {
+        max-height: 150px;
+    }
+    
+    .panel-body {
+        padding: 15px;
+    }
+    
+    .installation-panel, 
+    .progress-panel, 
+    .log-panel {
+        margin-bottom: 12px;
     }
     
     .extensions-filters {
@@ -3559,5 +3623,73 @@ body {
     
     .install-tab-nav {
         flex-direction: column;
+    }
+}
+
+/* 超小屏幕优化 (手机竖屏) */
+@media (max-width: 480px) {
+    .extensions-grid {
+        max-height: 200px;
+    }
+    
+    .running-browsers-grid {
+        max-height: 150px;
+    }
+    
+    .config-checkboxes {
+        max-height: 120px;
+    }
+    
+    .extensions-header {
+        padding: 10px 15px;
+        font-size: 14px;
+    }
+    
+    .extensions-content {
+        padding: 10px;
+    }
+    
+    .panel-body {
+        padding: 15px;
+    }
+    
+    .extension-card,
+    .running-browser-card {
+        padding: 12px;
+    }
+    
+    .extensions-grid {
+        gap: 12px;
+    }
+    
+    .running-browsers-grid {
+        gap: 12px;
+    }
+}
+
+/* 极小高度屏幕优化 (如小笔记本分屏) */
+@media (max-height: 600px) {
+    .extensions-grid {
+        max-height: 180px;
+    }
+    
+    .running-browsers-grid {
+        max-height: 150px;
+    }
+    
+    .config-checkboxes {
+        max-height: 100px;
+    }
+    
+    .extensions-header {
+        padding: 10px 20px;
+    }
+    
+    .extensions-content {
+        padding: 10px;
+    }
+    
+    .panel-body {
+        padding: 12px;
     }
 }

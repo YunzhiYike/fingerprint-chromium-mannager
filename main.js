@@ -1012,14 +1012,14 @@ ipcMain.handle('stop-all-browsers', async () => {
     }
 });
 
-// 获取已安装扩展的路径
-async function getInstalledExtensionPaths(extensionsDir) {
+// 获取已安装扩展的ID (适应Chrome标准目录结构)
+async function getInstalledExtensionIds(extensionsDir) {
   try {
     // 检查Extensions目录是否存在
     await fs.access(extensionsDir);
     
     const extensionIds = await fs.readdir(extensionsDir);
-    const validExtensionPaths = [];
+    const validExtensionIds = [];
     
     for (const extensionId of extensionIds) {
       const extensionPath = path.join(extensionsDir, extensionId);
@@ -1027,14 +1027,28 @@ async function getInstalledExtensionPaths(extensionsDir) {
       try {
         const stat = await fs.stat(extensionPath);
         if (stat.isDirectory()) {
-          // 检查是否有manifest.json文件
-          const manifestPath = path.join(extensionPath, 'manifest.json');
-          try {
-            await fs.access(manifestPath);
-            validExtensionPaths.push(extensionPath);
-            console.log(`✅ 发现有效扩展: ${extensionId}`);
-          } catch (manifestError) {
-            console.log(`⚠️ 扩展 ${extensionId} 缺少manifest.json`);
+          // 检查Chrome标准目录结构: Extensions/extensionId/version/manifest.json
+          const versionDirs = await fs.readdir(extensionPath);
+          
+          for (const version of versionDirs) {
+            const versionPath = path.join(extensionPath, version);
+            
+            try {
+              const versionStat = await fs.stat(versionPath);
+              if (versionStat.isDirectory()) {
+                const manifestPath = path.join(versionPath, 'manifest.json');
+                try {
+                  await fs.access(manifestPath);
+                  validExtensionIds.push(extensionId);
+                  console.log(`✅ 发现有效扩展: ${extensionId} (版本: ${version})`);
+                  break; // 找到一个有效版本就够了
+                } catch (manifestError) {
+                  console.log(`⚠️ 扩展 ${extensionId} 版本 ${version} 缺少manifest.json`);
+                }
+              }
+            } catch (versionStatError) {
+              console.log(`⚠️ 无法访问扩展版本目录: ${extensionId}/${version}`);
+            }
           }
         }
       } catch (statError) {
@@ -1042,10 +1056,110 @@ async function getInstalledExtensionPaths(extensionsDir) {
       }
     }
     
-    return validExtensionPaths;
+    return validExtensionIds;
   } catch (error) {
     // Extensions目录不存在或无法访问
     return [];
+  }
+}
+
+// 创建Chrome扩展Preferences文件以启用扩展
+async function createExtensionPreferences(userDataDir, extensionIds) {
+  try {
+    const preferencesPath = path.join(userDataDir, 'Default', 'Preferences');
+    
+    // 读取现有Preferences文件
+    let preferences = {};
+    try {
+      await fs.access(preferencesPath);
+      const existingContent = await fs.readFile(preferencesPath, 'utf8');
+      preferences = JSON.parse(existingContent);
+      console.log(`📖 读取现有Preferences文件: ${preferencesPath}`);
+    } catch (readError) {
+      console.log(`📝 创建新的Preferences文件: ${preferencesPath}`);
+      preferences = {};
+    }
+    
+    // 确保extensions结构存在
+    if (!preferences.extensions) {
+      preferences.extensions = {};
+    }
+    if (!preferences.extensions.settings) {
+      preferences.extensions.settings = {};
+    }
+    
+    // 为每个扩展添加完整的Chrome标准配置
+    for (const extensionId of extensionIds) {
+      try {
+        // 读取扩展的manifest.json获取真实信息
+        const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+        const extensionVersionDirs = await fs.readdir(path.join(extensionsDir, extensionId));
+        
+        for (const version of extensionVersionDirs) {
+          const manifestPath = path.join(extensionsDir, extensionId, version, 'manifest.json');
+          
+          try {
+            await fs.access(manifestPath);
+            const manifestContent = await fs.readFile(manifestPath, 'utf8');
+            const manifest = JSON.parse(manifestContent);
+            
+            const installTime = Math.floor(Date.now() / 1000000000); // Chrome使用微秒
+            
+            preferences.extensions.settings[extensionId] = {
+              "active_permissions": {
+                "api": manifest.permissions || [],
+                "explicit_host": manifest.host_permissions || [],
+                "manifest_permissions": manifest.permissions || []
+              },
+              "creation_flags": 1,
+              "from_bookmark": false,
+              "from_webstore": false,
+              "granted_permissions": {
+                "api": manifest.permissions || [],
+                "explicit_host": manifest.host_permissions || [],
+                "manifest_permissions": manifest.permissions || []
+              },
+              "install_time": installTime.toString(),
+              "location": 4, // 4 = UNPACKED (开发者模式)
+              "manifest": {
+                "action": manifest.action || {},
+                "background": manifest.background || {},
+                "content_scripts": manifest.content_scripts || [],
+                "description": manifest.description || "",
+                "host_permissions": manifest.host_permissions || [],
+                "icons": manifest.icons || {},
+                "manifest_version": manifest.manifest_version || 3,
+                "name": manifest.name || extensionId,
+                "permissions": manifest.permissions || [],
+                "update_url": manifest.update_url || "",
+                "version": manifest.version || "1.0"
+              },
+              "never_activated_since_loaded": true,
+              "path": path.join(extensionsDir, extensionId, version),
+              "state": 1, // 1 = enabled
+              "was_installed_by_default": false,
+              "was_installed_by_oem": false
+            };
+            
+            console.log(`🔧 已配置扩展启用: ${extensionId} (${manifest.name} v${manifest.version})`);
+            break; // 只配置第一个找到的版本
+            
+          } catch (manifestError) {
+            console.warn(`⚠️ 无法读取manifest: ${manifestPath}`);
+          }
+        }
+      } catch (extensionError) {
+        console.warn(`⚠️ 处理扩展 ${extensionId} 时出错: ${extensionError.message}`);
+      }
+    }
+    
+    // 写入Preferences文件
+    await fs.writeFile(preferencesPath, JSON.stringify(preferences, null, 2), 'utf8');
+    console.log(`✅ 已更新Chrome Preferences文件: ${preferencesPath}`);
+    
+  } catch (error) {
+    console.error(`❌ 创建Preferences文件失败: ${error.message}`);
+    throw error;
   }
 }
 
@@ -1064,19 +1178,84 @@ async function getBrowserUserDataDir(pid) {
     const { promisify } = require('util');
     const execAsync = promisify(exec);
     
-    // 在macOS上使用ps命令获取进程的完整命令行
-    const { stdout } = await execAsync(`ps -p ${pid} -o command=`);
-    const commandLine = stdout.trim();
+    let commandLine;
+    
+    // 跨平台获取进程命令行
+    if (process.platform === 'win32') {
+      // Windows使用wmic命令
+      try {
+        const { stdout } = await execAsync(`wmic process where "ProcessId=${pid}" get CommandLine /value`);
+        const lines = stdout.split('\n').filter(line => line.trim());
+        const commandLineLine = lines.find(line => line.startsWith('CommandLine='));
+        if (commandLineLine) {
+          commandLine = commandLineLine.substring('CommandLine='.length).trim();
+        } else {
+          throw new Error('未能从wmic输出中提取命令行');
+        }
+      } catch (wmicError) {
+        console.log(`⚠️ wmic命令失败，尝试使用tasklist: ${wmicError.message}`);
+        // 备用方案：使用Get-WmiObject PowerShell命令
+        const { stdout } = await execAsync(`powershell "Get-WmiObject Win32_Process -Filter \\"ProcessId=${pid}\\" | Select-Object CommandLine | Format-List"`);
+        const match = stdout.match(/CommandLine\s*:\s*(.+)/);
+        if (match) {
+          commandLine = match[1].trim();
+        } else {
+          throw new Error('无法获取Windows进程命令行');
+        }
+      }
+    } else {
+      // macOS/Linux使用ps命令
+      const { stdout } = await execAsync(`ps -p ${pid} -o command=`);
+      commandLine = stdout.trim();
+    }
     
     console.log(`🔍 浏览器进程 ${pid} 命令行: ${commandLine}`);
+    console.log(`🖥️ 当前平台: ${process.platform}`);
     
-    // 提取--user-data-dir参数 (处理路径中的空格)
-    const userDataDirMatch = commandLine.match(/--user-data-dir=([^\s].+?)(?:\s--|\s*$)/);
+    // 提取--user-data-dir参数 (正确处理路径中的空格)
+    // 修复正则表达式：支持路径中的空格和特殊字符
+    // 支持带引号的路径（Windows常见）
+    let userDataDirMatch = commandLine.match(/--user-data-dir=["']([^"']+)["']/);
+    if (!userDataDirMatch) {
+      // 修复正则：正确匹配包含空格的路径，直到下一个参数
+      userDataDirMatch = commandLine.match(/--user-data-dir=([^\s].*?)(?:\s+--|\s*$)/);
+    }
+    
     if (userDataDirMatch) {
       const userDataDir = userDataDirMatch[1].trim();
       console.log(`✅ 提取到用户数据目录: ${userDataDir}`);
+      console.log(`📂 路径类型: ${process.platform === 'win32' ? 'Windows路径' : 'Unix路径'}`);
       return userDataDir;
     } else {
+      console.log(`❌ 正则匹配失败，尝试手动解析命令行`);
+      // 备用解析方法：查找--user-data-dir=并获取后面的路径
+      const userDataDirIndex = commandLine.indexOf('--user-data-dir=');
+      if (userDataDirIndex !== -1) {
+        const startIndex = userDataDirIndex + '--user-data-dir='.length;
+        let remainingCommand = commandLine.substring(startIndex);
+        
+        // 处理引号包围的路径（Windows常见）
+        if (remainingCommand.startsWith('"') || remainingCommand.startsWith("'")) {
+          const quote = remainingCommand[0];
+          remainingCommand = remainingCommand.substring(1);
+          const endIndex = remainingCommand.indexOf(quote);
+          if (endIndex !== -1) {
+            const userDataDir = remainingCommand.substring(0, endIndex);
+            console.log(`✅ 手动解析到用户数据目录（引号路径）: ${userDataDir}`);
+            return userDataDir;
+          }
+        } else {
+          // 查找下一个--参数的位置
+          const nextArgMatch = remainingCommand.match(/\s--[^-]/);
+          const userDataDir = nextArgMatch 
+            ? remainingCommand.substring(0, nextArgMatch.index).trim()
+            : remainingCommand.trim();
+            
+          console.log(`✅ 手动解析到用户数据目录: ${userDataDir}`);
+          return userDataDir;
+        }
+      }
+      
       throw new Error('未找到--user-data-dir参数');
     }
   } catch (error) {
@@ -1347,18 +1526,36 @@ async function buildChromiumArgs(config) {
     args.push(`--user-data-dir=${userDataDir}`);
   }
 
-  // 自动加载已安装的扩展
+  // 注意：扩展通过开发者模式自动加载，无需预配置Preferences
+  // Chrome会在启动时自动扫描Extensions目录中的有效扩展
   try {
     const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
-    const extensionPaths = await getInstalledExtensionPaths(extensionsDir);
+    const extensionIds = await getInstalledExtensionIds(extensionsDir);
     
-    if (extensionPaths.length > 0) {
-      const extensionArg = `--load-extension=${extensionPaths.join(',')}`;
-      args.push(extensionArg);
-      console.log(`🧩 加载 ${extensionPaths.length} 个已安装扩展: ${extensionPaths.map(p => path.basename(p)).join(', ')}`);
+    if (extensionIds.length > 0) {
+      console.log(`🧩 发现 ${extensionIds.length} 个已安装扩展: ${extensionIds.join(', ')}`);
+      console.log(`📁 扩展目录: ${extensionsDir}`);
+      
+      // 确保浏览器以开发者模式启动，这样会自动加载Extensions目录中的扩展
+      args.push('--enable-extensions');
+      args.push('--load-extension=' + extensionIds.map(id => {
+        const extensionPath = path.join(extensionsDir, id);
+        // 查找版本目录
+        try {
+          const versions = require('fs').readdirSync(extensionPath);
+          if (versions.length > 0) {
+            return path.join(extensionPath, versions[0]);
+          }
+        } catch (error) {
+          console.warn(`⚠️ 无法读取扩展版本: ${id}`);
+        }
+        return extensionPath;
+      }).filter(Boolean).join(','));
+      
+      console.log(`🔧 已添加扩展加载参数`);
     }
   } catch (error) {
-    console.warn('⚠️ 加载扩展失败:', error.message);
+    console.warn('⚠️ 处理扩展失败:', error.message);
   }
 
   return { args, debugPort, proxyPort };

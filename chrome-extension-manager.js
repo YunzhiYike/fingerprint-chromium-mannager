@@ -21,6 +21,15 @@ class ChromeExtensionManager {
       console.log(`📁 扩展目录已创建: ${this.extensionsDir}`);
       console.log(`🔍 扩展目录平台检查: ${process.platform === 'win32' ? 'Windows' : 'Unix-like'}`);
       console.log(`📂 目录路径类型: ${this.extensionsDir.includes('app.asar') ? '❌ asar包内(错误)' : '✅ 用户数据目录(正确)'}`);
+      console.log(`🗂️ 路径格式: ${process.platform === 'win32' ? 'Windows (反斜杠)' : 'Unix (正斜杠)'}`);
+      
+      // 验证目录权限
+      try {
+        await fs.access(this.extensionsDir, fs.constants.W_OK);
+        console.log(`✅ 扩展目录可写权限验证通过`);
+      } catch (permError) {
+        console.warn(`⚠️ 扩展目录可能没有写权限: ${permError.message}`);
+      }
     } catch (error) {
       console.error('❌ 创建扩展目录失败:', error.message);
       throw error;
@@ -228,22 +237,20 @@ class ChromeExtensionManager {
     }
   }
 
-  // 安装单个扩展
+  // 安装单个扩展 (Chrome标准目录结构)
   async installSingleExtension(crxPath, extensionsPath, extensionId) {
     try {
-      const extensionDir = path.join(extensionsPath, extensionId);
+      // Chrome标准扩展目录结构: Extensions/extensionId/version/
+      const extensionBaseDir = path.join(extensionsPath, extensionId);
       
       // 🗑️ 先清理现有扩展目录（防止文件冲突）
       try {
-        await fs.access(extensionDir);
-        console.log(`🗑️ 清理现有扩展目录: ${extensionDir}`);
-        await fs.rm(extensionDir, { recursive: true, force: true });
+        await fs.access(extensionBaseDir);
+        console.log(`🗑️ 清理现有扩展目录: ${extensionBaseDir}`);
+        await fs.rm(extensionBaseDir, { recursive: true, force: true });
       } catch (error) {
         // 目录不存在，忽略错误
       }
-      
-      // 重新创建扩展目录
-      await fs.mkdir(extensionDir, { recursive: true });
       
       // 解析CRX文件并提取ZIP内容
       const zipData = await this.extractZipFromCrx(crxPath);
@@ -252,33 +259,108 @@ class ChromeExtensionManager {
       const tempZipPath = path.join(this.extensionsDir, `temp_${extensionId}.zip`);
       await fs.writeFile(tempZipPath, zipData);
       
+      // 临时解压到temp目录获取manifest版本信息
+      const tempExtractDir = path.join(this.extensionsDir, `temp_extract_${extensionId}`);
+      await fs.mkdir(tempExtractDir, { recursive: true });
+      
+      let version = '1.0.0';
+      let extensionVersionDir;
+      
       try {
-        // 解压ZIP文件
-        const command = `unzip -q "${tempZipPath}" -d "${extensionDir}"`;
-        console.log(`🔄 执行解压命令: ${command}`);
+        // 解压到临时目录读取manifest
+        const tempCommand = `unzip -q "${tempZipPath}" -d "${tempExtractDir}"`;
+        await execAsync(tempCommand);
         
-        const { stdout, stderr } = await execAsync(command);
+        // 读取manifest获取版本
+        const manifestPath = path.join(tempExtractDir, 'manifest.json');
+        const manifestContent = await fs.readFile(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent);
+        version = manifest.version || '1.0.0';
+        
+        console.log(`📋 扩展版本: ${version}`);
+        
+        // 创建符合Chrome标准的目录结构: Extensions/extensionId/version/
+        extensionVersionDir = path.join(extensionBaseDir, version);
+        
+        // 确保父目录存在
+        await fs.mkdir(path.dirname(extensionVersionDir), { recursive: true });
+        await fs.mkdir(extensionVersionDir, { recursive: true });
+        
+        console.log(`📁 已创建目录: ${extensionVersionDir}`);
+        
+        // 解压扩展到最终目录
+        const finalCommand = `unzip -q "${tempZipPath}" -d "${extensionVersionDir}"`;
+        console.log(`🔄 执行最终解压命令: ${finalCommand}`);
+        console.log(`🖥️ 当前平台: ${process.platform}`);
+        console.log(`📂 解压目标: ${extensionVersionDir}`);
+        
+        const { stdout, stderr } = await execAsync(finalCommand);
+        
+        console.log(`📋 解压命令stdout: ${stdout || '(空)'}`);
+        console.log(`📋 解压命令stderr: ${stderr || '(空)'}`);
+        
+        // 验证目录中是否有文件
+        const files = await fs.readdir(extensionVersionDir);
+        console.log(`📂 解压后文件数量: ${files.length}`);
+        
+        if (stderr && !stderr.includes('warning')) {
+          console.warn(`⚠️ 解压时出现警告: ${stderr}`);
+        }
         
         // 验证解压结果
-        const manifestPath = path.join(extensionDir, 'manifest.json');
-        await fs.access(manifestPath);
+        const finalManifestPath = path.join(extensionVersionDir, 'manifest.json');
+        await fs.access(finalManifestPath);
         
         console.log(`✅ 扩展安装成功: ${extensionId}`);
-        console.log(`📁 安装路径: ${extensionDir}`);
+        console.log(`📁 安装路径: ${extensionVersionDir}`);
+        console.log(`📋 manifest.json 验证通过`);
         
-        return { success: true, extensionId, path: extensionDir };
+        return { success: true, extensionId, path: extensionVersionDir, version };
         
-      } finally {
-        // 清理临时ZIP文件
+      } catch (error) {
+        console.error(`❌ 扩展安装失败 ${extensionId}:`, error.message);
+        console.error(`🐛 详细错误:`, error);
+        
+        // 清理失败的安装
         try {
-          await fs.unlink(tempZipPath);
+          await fs.rm(extensionBaseDir, { recursive: true, force: true });
+          console.log(`🗑️ 已清理失败的安装目录: ${extensionBaseDir}`);
         } catch (cleanupError) {
-          console.warn(`⚠️ 清理临时文件失败: ${cleanupError.message}`);
+          console.warn(`⚠️ 清理失败目录时出错: ${cleanupError.message}`);
+        }
+        
+        return { success: false, extensionId, error: error.message };
+      } finally {
+        // 🐛 暂时保留临时文件用于调试
+        console.log(`🐛 临时文件保留用于调试: ${tempZipPath}`);
+        // 只清理临时解压目录
+        try {
+          await fs.rm(tempExtractDir, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.warn(`⚠️ 清理临时解压目录失败: ${cleanupError.message}`);
         }
       }
       
     } catch (error) {
       console.error(`❌ 解压扩展失败 ${extensionId}:`, error.message);
+      
+      // Windows特定错误处理
+      if (process.platform === 'win32') {
+        if (error.message.includes('Access is denied')) {
+          console.error(`🛡️ Windows权限错误: 请确保运行时具有管理员权限或目标目录可写`);
+        } else if (error.message.includes('unzip') && error.message.includes('not found')) {
+          console.error(`📦 Windows缺少unzip工具: 请安装Git Bash或使用Windows内置解压功能`);
+        }
+      }
+      
+      // 清理失败的安装
+      try {
+        await fs.rm(extensionDir, { recursive: true, force: true });
+        console.log(`🗑️ 已清理失败的安装目录: ${extensionDir}`);
+      } catch (cleanupError) {
+        console.warn(`⚠️ 清理失败目录时出错: ${cleanupError.message}`);
+      }
+      
       return { success: false, extensionId, error: error.message };
     }
   }
@@ -368,18 +450,8 @@ class ChromeExtensionManager {
     }
   }
 
-  // 生成启动参数
-  generateExtensionArgs(userDataDir, extensionIds) {
-    if (!extensionIds || extensionIds.length === 0) {
-      return [];
-    }
-    
-    const extensionPaths = extensionIds.map(id => {
-      return path.join(userDataDir, 'Default', 'Extensions', id);
-    });
-    
-    return [`--load-extension=${extensionPaths.join(',')}`];
-  }
+  // 注意: 不再使用 --load-extension 参数
+  // 扩展现在通过Chrome标准的Preferences文件启用
 }
 
 module.exports = ChromeExtensionManager; 
