@@ -452,7 +452,7 @@ ipcMain.handle('launch-browser', async (event, config) => {
       console.warn(`📚 [调用栈] ${new Error().stack}`);
       
       // 检查扩展目录是否还存在
-      const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+      const extensionsDir = path.join(userDataDir, 'Extensions');
       fs.access(extensionsDir)
         .then(() => {
           console.log(`✅ [扩展检查] 扩展目录仍然存在: ${extensionsDir}`);
@@ -1019,7 +1019,7 @@ ipcMain.handle('start-all-browsers', async () => {
                         console.warn(`📚 [调用栈] ${new Error().stack}`);
                         
                         // 检查扩展目录是否还存在
-                        const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+                        const extensionsDir = path.join(userDataDir,  'Extensions');
                         fs.access(extensionsDir)
                           .then(() => {
                             console.log(`✅ [扩展检查] 扩展目录仍然存在: ${extensionsDir}`);
@@ -1207,7 +1207,7 @@ async function createExtensionPreferences(userDataDir, extensionIds) {
     for (const extensionId of extensionIds) {
       try {
         // 读取扩展的manifest.json获取真实信息
-        const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+        const extensionsDir = path.join(userDataDir, 'Extensions');
         const extensionVersionDirs = await fs.readdir(path.join(extensionsDir, extensionId));
         
         for (const version of extensionVersionDirs) {
@@ -1852,7 +1852,7 @@ async function buildChromiumArgs(config) {
   // ✅ 扩展通过Chrome标准Preferences文件和--load-extension参数双重启用
   // Chrome会读取Preferences文件中的扩展配置，同时通过--load-extension确保加载
   try {
-    const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+    const extensionsDir = path.join(userDataDir, 'Extensions');
     const extensionIds = await getInstalledExtensionIds(extensionsDir);
     
     if (extensionIds.length > 0) {
@@ -3785,7 +3785,7 @@ ipcMain.handle('check-extension-paths', async (event, configId) => {
     
     // 计算用户数据目录
     const userDataDir = await calculateUserDataDir(config, appSettings);
-    const extensionsDir = path.join(userDataDir, 'Default', 'Extensions');
+    const extensionsDir = path.join(userDataDir, 'Extensions');
     
     console.log(`🔍 检查配置 "${config.name}" 的扩展路径...`);
     console.log(`📁 用户数据目录: ${userDataDir}`);

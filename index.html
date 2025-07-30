@@ -55,17 +55,13 @@
                         <i class="fas fa-puzzle-piece"></i>
                         <span>扩展管理</span>
                     </button>
+                    <button id="batchGenerateBtn" class="el-button el-button--warning el-button--round">
+                        <i class="fas fa-magic"></i>
+                        <span>批量生成配置</span>
+                    </button>
                     <button id="refreshBtn" class="el-button el-button--success el-button--round">
                         <i class="fas fa-sync-alt"></i>
                         <span>刷新</span>
-                    </button>
-                    <button id="extensionsBtn" class="el-button el-button--warning el-button--round">
-                        <i class="fas fa-puzzle-piece"></i>
-                        <span>扩展管理</span>
-                    </button>
-                    <button id="extensionRepairBtn" class="el-button el-button--danger el-button--round">
-                        <i class="fas fa-wrench"></i>
-                        <span>扩展修复</span>
                     </button>
                     <button id="settingsBtn" class="el-button el-button--info el-button--round">
                         <i class="fas fa-cog"></i>
@@ -667,12 +663,259 @@
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                                        </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量生成浏览器配置页面 -->
+<div id="batchGeneratePage" class="batch-generate-page" style="display: none;">
+    <div class="batch-generate-header">
+        <div class="task-title-section">
+            <h3 class="task-title">
+                <i class="fas fa-magic"></i>
+                批量生成浏览器配置
+            </h3>
+            <span class="task-subtitle">快速生成大量独特的浏览器指纹配置，支持自定义随机化选项</span>
+        </div>
+        <div class="task-actions">
+            <button id="closeBatchGenerateBtn" class="el-button el-button--info el-button--round">
+                <i class="fas fa-arrow-left"></i>
+                <span>返回主页</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="batch-generate-content">
+        <div class="batch-generate-left">
+            <!-- 基础设置 -->
+            <div class="el-card generate-settings-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-cog"></i>
+                        基础设置
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>生成数量</label>
+                            <input id="generateCount" type="number" class="el-input" value="10" min="1" max="100" placeholder="输入生成数量">
+                        </div>
+                        <div class="form-group">
+                            <label>命名前缀</label>
+                            <input id="namePrefix" type="text" class="el-input" value="配置" placeholder="输入配置名前缀">
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div id="extensionsPage" class="extensions-page" style="display: none;">
+            <!-- 随机化选项 -->
+            <div class="el-card randomization-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-random"></i>
+                        随机化选项
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="checkbox-grid">
+                        <div class="checkbox-group">
+                            <label class="el-checkbox">
+                                <input id="randomPlatform" type="checkbox" checked>
+                                <span class="checkbox-label">随机平台</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomPlatformVersion" type="checkbox" checked>
+                                <span class="checkbox-label">随机平台版本</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomBrand" type="checkbox" checked>
+                                <span class="checkbox-label">随机浏览器品牌</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomBrandVersion" type="checkbox" checked>
+                                <span class="checkbox-label">随机浏览器版本</span>
+                            </label>
+                        </div>
+                        <div class="checkbox-group">
+                            <label class="el-checkbox">
+                                <input id="randomHardware" type="checkbox" checked>
+                                <span class="checkbox-label">随机硬件配置</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomFingerprint" type="checkbox" checked>
+                                <span class="checkbox-label">随机指纹ID</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomLanguage" type="checkbox" checked>
+                                <span class="checkbox-label">随机语言</span>
+                            </label>
+                            <label class="el-checkbox">
+                                <input id="randomTimezone" type="checkbox" checked>
+                                <span class="checkbox-label">随机时区</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 代理配置 -->
+            <div class="el-card proxy-config-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-globe"></i>
+                        代理配置
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="proxy-mode-selection">
+                        <label class="radio-label">
+                            <input type="radio" name="proxyMode" value="none" checked>
+                            <span>不使用代理</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="proxyMode" value="single">
+                            <span>单个代理</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="proxyMode" value="list">
+                            <span>代理列表</span>
+                        </label>
+                    </div>
+
+                    <!-- 单个代理配置 -->
+                    <div id="singleProxyConfig" class="proxy-config-section" style="display: none;">
+                        <div class="form-group">
+                            <label>代理服务器</label>
+                            <input id="singleProxyServer" type="text" class="el-input" placeholder="http://127.0.0.1:8080">
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>用户名</label>
+                                <input id="singleProxyUsername" type="text" class="el-input" placeholder="可选">
+                            </div>
+                            <div class="form-group">
+                                <label>密码</label>
+                                <input id="singleProxyPassword" type="password" class="el-input" placeholder="可选">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 代理列表配置 -->
+                    <div id="proxyListConfig" class="proxy-config-section" style="display: none;">
+                        <div class="form-group">
+                            <label>代理列表 <span id="proxyListCount" class="proxy-count">代理数量: 0</span></label>
+                            <textarea id="proxyListTextarea" class="el-textarea" rows="6" placeholder="每行一个代理，支持格式：&#10;http://host:port&#10;http://user:pass@host:port&#10;socks5://host:port"></textarea>
+                        </div>
+                        <div class="proxy-actions">
+                            <button id="importProxyBtn" class="el-button el-button--text">
+                                <i class="fas fa-file-import"></i>
+                                从文件导入
+                            </button>
+                            <button id="clearProxyBtn" class="el-button el-button--text">
+                                <i class="fas fa-trash"></i>
+                                清空列表
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模板管理 -->
+            <div class="el-card template-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-save"></i>
+                        配置模板
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="template-actions">
+                        <button id="saveTemplateBtn" class="el-button el-button--primary el-button--small">
+                            <i class="fas fa-save"></i>
+                            保存当前设置为模板
+                        </button>
+                        <button id="loadTemplateBtn" class="el-button el-button--info el-button--small">
+                            <i class="fas fa-folder-open"></i>
+                            加载模板
+                        </button>
+                    </div>
+                    <div id="templateList" class="template-list">
+                        <!-- 模板列表 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="batch-generate-right">
+            <!-- 操作控制 -->
+            <div class="el-card control-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-play"></i>
+                        操作控制
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="control-actions">
+                        <button id="previewGenerateBtn" class="el-button el-button--info el-button--round control-btn">
+                            <i class="fas fa-eye"></i>
+                            <span>预览配置</span>
+                        </button>
+                        <button id="generateConfigsBtn" class="el-button el-button--primary el-button--round control-btn">
+                            <i class="fas fa-cogs"></i>
+                            <span>开始生成</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生成进度 -->
+            <div id="generateProgress" class="el-card progress-card" style="display: none;">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-tasks"></i>
+                        生成进度
+                    </span>
+                </div>
+                <div class="el-card__body">
+                    <div class="progress-info">
+                        <div class="progress-text">
+                            <span id="generateProgressText">等待开始...</span>
+                            <span id="generateProgressPercent" class="progress-percent">0%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="generateProgressFill" class="progress-fill"></div>
+                        </div>
+                        <div id="generateProgressDetails" class="progress-details">等待开始...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生成结果 -->
+            <div class="el-card result-card">
+                <div class="el-card__header">
+                    <span class="section-title">
+                        <i class="fas fa-list-alt"></i>
+                        生成日志
+                    </span>
+                    <button id="clearGenerateLogBtn" class="el-button el-button--text">
+                        <i class="fas fa-trash"></i>
+                        清空日志
+                    </button>
+                </div>
+                <div class="el-card__body">
+                    <div id="generateLog" class="generate-log">
+                        <!-- 生成日志 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="extensionsPage" class="extensions-page" style="display: none;">
                     <div class="extensions-header">
                         <div class="task-title-section">
                             <h3 class="task-title">

@@ -187,11 +187,11 @@ class BrowserConfigManager {
             });
         }
 
-        // 扩展修复按钮
-        const extensionRepairBtn = document.getElementById('extensionRepairBtn');
-        if (extensionRepairBtn) {
-            extensionRepairBtn.addEventListener('click', () => {
-                window.location.href = 'extension-repair.html';
+        // 批量生成配置按钮
+        const batchGenerateBtn = document.getElementById('batchGenerateBtn');
+        if (batchGenerateBtn) {
+            batchGenerateBtn.addEventListener('click', () => {
+                this.showBatchGenerate();
             });
         }
         }
@@ -2322,6 +2322,429 @@ UDP连接: ${formData.disableNonProxiedUdp ? '已禁用' : '已启用'}
             }
         } catch (error) {
             this.addTaskLog('error', `❌ 测试连接时出错: ${error.message}`);
+        }
+    }
+
+    // 批量生成配置相关方法
+    async showBatchGenerate() {
+        document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('configForm').style.display = 'none';
+        document.getElementById('settingsPage').style.display = 'none';
+        document.getElementById('batchTaskPage').style.display = 'none';
+        document.getElementById('batchGeneratePage').style.display = 'flex';
+        
+        // 初始化批量生成表单
+        this.initBatchGenerateForm();
+    }
+
+    hideBatchGenerate() {
+        document.getElementById('batchGeneratePage').style.display = 'none';
+        document.getElementById('welcomeScreen').style.display = 'block';
+    }
+
+    // 初始化批量生成表单
+    initBatchGenerateForm() {
+        // 代理模式切换
+        const proxyModeRadios = document.querySelectorAll('input[name="proxyMode"]');
+        proxyModeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.handleProxyModeChange(e.target.value);
+            });
+        });
+
+        // 代理列表文本框变化监听
+        const proxyListTextarea = document.getElementById('proxyListTextarea');
+        if (proxyListTextarea) {
+            proxyListTextarea.addEventListener('input', () => {
+                this.updateProxyListCount();
+            });
+        }
+
+        // 按钮事件监听
+        document.getElementById('generateConfigsBtn')?.addEventListener('click', () => {
+            this.generateConfigs();
+        });
+
+        document.getElementById('previewGenerateBtn')?.addEventListener('click', () => {
+            this.previewGenerateConfigs();
+        });
+
+        document.getElementById('closeBatchGenerateBtn')?.addEventListener('click', () => {
+            this.hideBatchGenerate();
+        });
+
+        document.getElementById('clearGenerateLogBtn')?.addEventListener('click', () => {
+            this.clearGenerateLog();
+        });
+
+        // 初始化默认值
+        this.updateProxyListCount();
+    }
+
+    // 处理代理模式切换
+    handleProxyModeChange(mode) {
+        const singleProxyConfig = document.getElementById('singleProxyConfig');
+        const proxyListConfig = document.getElementById('proxyListConfig');
+
+        // 隐藏所有代理配置
+        singleProxyConfig.style.display = 'none';
+        proxyListConfig.style.display = 'none';
+
+        // 根据模式显示对应配置
+        if (mode === 'single') {
+            singleProxyConfig.style.display = 'block';
+        } else if (mode === 'list') {
+            proxyListConfig.style.display = 'block';
+        }
+    }
+
+    // 更新代理列表数量
+    updateProxyListCount() {
+        const textarea = document.getElementById('proxyListTextarea');
+        const countSpan = document.getElementById('proxyListCount');
+        
+        if (textarea && countSpan) {
+            const proxies = textarea.value.trim().split('\n').filter(line => line.trim() !== '');
+            countSpan.textContent = `代理数量: ${proxies.length}`;
+        }
+    }
+
+    // 批量生成配置
+    async generateConfigs() {
+        try {
+            const generateBtn = document.getElementById('generateConfigsBtn');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 生成中...';
+
+            // 获取生成设置
+            const settings = this.getGenerateSettings();
+            
+            if (!this.validateGenerateSettings(settings)) {
+                return;
+            }
+
+            this.showGenerateProgress(true);
+            this.addGenerateLog('开始批量生成浏览器配置...', 'info');
+
+            const generatedConfigs = [];
+            const proxies = settings.proxyConfig.mode === 'list' ? this.parseProxyList() : [];
+
+            for (let i = 0; i < settings.count; i++) {
+                this.updateGenerateProgress((i + 1) / settings.count * 100, `正在生成第 ${i + 1} 个配置...`);
+                
+                const config = await this.generateSingleConfig(settings, i, proxies);
+                generatedConfigs.push(config);
+                
+                this.addGenerateLog(`✅ 生成配置: ${config.name}`, 'success');
+                
+                // 添加小延迟避免界面卡顿
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // 保存生成的配置
+            for (const config of generatedConfigs) {
+                this.configs.push(config);
+            }
+            
+            await this.saveConfigs();
+            this.updateConfigList();
+            this.updateUI();
+
+            this.addGenerateLog(`🎉 批量生成完成！共生成 ${generatedConfigs.length} 个配置`, 'success');
+            this.showGenerateProgress(false);
+
+        } catch (error) {
+            console.error('批量生成配置失败:', error);
+            this.addGenerateLog(`❌ 生成失败: ${error.message}`, 'error');
+            this.showGenerateProgress(false);
+        } finally {
+            const generateBtn = document.getElementById('generateConfigsBtn');
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="fas fa-cogs"></i> 开始生成';
+        }
+    }
+
+    // 获取生成设置
+    getGenerateSettings() {
+        const count = parseInt(document.getElementById('generateCount').value) || 10;
+        const namePrefix = document.getElementById('namePrefix').value || '配置';
+        
+        // 获取代理模式
+        const proxyMode = document.querySelector('input[name="proxyMode"]:checked').value;
+        let proxyConfig = { mode: proxyMode };
+        
+        if (proxyMode === 'single') {
+            proxyConfig.server = document.getElementById('singleProxyServer').value;
+            proxyConfig.username = document.getElementById('singleProxyUsername').value;
+            proxyConfig.password = document.getElementById('singleProxyPassword').value;
+        }
+
+        // 获取随机化选项
+        const randomization = {
+            platform: document.getElementById('randomPlatform').checked,
+            platformVersion: document.getElementById('randomPlatformVersion').checked,
+            brand: document.getElementById('randomBrand').checked,
+            brandVersion: document.getElementById('randomBrandVersion').checked,
+            hardware: document.getElementById('randomHardware').checked,
+            fingerprint: document.getElementById('randomFingerprint').checked,
+            language: document.getElementById('randomLanguage').checked,
+            timezone: document.getElementById('randomTimezone').checked
+        };
+
+        return {
+            count,
+            namePrefix,
+            proxyConfig,
+            randomization
+        };
+    }
+
+    // 验证生成设置
+    validateGenerateSettings(settings) {
+        if (settings.count < 1 || settings.count > 100) {
+            alert('生成数量必须在 1-100 之间');
+            return false;
+        }
+
+        if (!settings.namePrefix.trim()) {
+            alert('请输入命名前缀');
+            return false;
+        }
+
+        if (settings.proxyConfig.mode === 'single' && !settings.proxyConfig.server.trim()) {
+            alert('请输入代理服务器地址');
+            return false;
+        }
+
+        if (settings.proxyConfig.mode === 'list') {
+            const proxies = this.parseProxyList();
+            if (proxies.length === 0) {
+                alert('请输入代理列表');
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // 生成单个配置
+    async generateSingleConfig(settings, index, proxies) {
+        const config = {
+            id: uuidv4(),
+            name: `${settings.namePrefix}_${String(index + 1).padStart(3, '0')}`,
+            fingerprint: settings.randomization.fingerprint ? Math.floor(Math.random() * 4294967295) : 1000000000 + index,
+            randomFolder: await ipcRenderer.invoke('generate-random-folder'),
+            created: new Date().toISOString()
+        };
+
+        // 随机生成平台信息
+        if (settings.randomization.platform) {
+            const platforms = ['windows', 'linux', 'macos'];
+            config.platform = platforms[Math.floor(Math.random() * platforms.length)];
+        } else {
+            config.platform = 'windows';
+        }
+
+        if (settings.randomization.platformVersion) {
+            const versions = {
+                windows: ['10.0.19042', '10.0.19041', '11.0.22000'],
+                linux: ['5.4.0', '5.8.0', '5.15.0'],
+                macos: ['10.15.7', '11.6.1', '12.0.1']
+            };
+            const platformVersions = versions[config.platform] || versions.windows;
+            config.platformVersion = platformVersions[Math.floor(Math.random() * platformVersions.length)];
+        } else {
+            config.platformVersion = '10.0.19042';
+        }
+
+        // 随机生成浏览器信息
+        if (settings.randomization.brand) {
+            const brands = ['Chrome', 'Edge', 'Opera', 'Vivaldi'];
+            config.brand = brands[Math.floor(Math.random() * brands.length)];
+        } else {
+            config.brand = 'Chrome';
+        }
+
+        if (settings.randomization.brandVersion) {
+            const versions = ['120.0.6099.71', '119.0.6045.105', '121.0.6167.85', '118.0.5993.117'];
+            config.brandVersion = versions[Math.floor(Math.random() * versions.length)];
+        } else {
+            config.brandVersion = '120.0.6099.71';
+        }
+
+        // 随机生成硬件信息
+        if (settings.randomization.hardware) {
+            const cores = [2, 4, 6, 8, 12, 16];
+            config.hardwareConcurrency = cores[Math.floor(Math.random() * cores.length)];
+        } else {
+            config.hardwareConcurrency = 4;
+        }
+
+        // 随机生成语言和时区
+        if (settings.randomization.language) {
+            const languages = [
+                { lang: 'zh-CN', accept: 'zh-CN,zh;q=0.9,en;q=0.8' },
+                { lang: 'en-US', accept: 'en-US,en;q=0.9' },
+                { lang: 'ja-JP', accept: 'ja-JP,ja;q=0.9,en;q=0.8' },
+                { lang: 'ko-KR', accept: 'ko-KR,ko;q=0.9,en;q=0.8' }
+            ];
+            const langConfig = languages[Math.floor(Math.random() * languages.length)];
+            config.language = langConfig.lang;
+            config.acceptLanguage = langConfig.accept;
+        } else {
+            config.language = 'zh-CN';
+            config.acceptLanguage = 'zh-CN,zh;q=0.9,en;q=0.8';
+        }
+
+        if (settings.randomization.timezone) {
+            const timezones = ['Asia/Shanghai', 'Asia/Seoul', 'Asia/Tokyo', 'America/New_York', 'Europe/London'];
+            config.timezone = timezones[Math.floor(Math.random() * timezones.length)];
+        } else {
+            config.timezone = 'Asia/Shanghai';
+        }
+
+        // 设置代理
+        if (settings.proxyConfig.mode === 'single' && settings.proxyConfig.server) {
+            config.proxyServer = settings.proxyConfig.server;
+            config.proxyUsername = settings.proxyConfig.username || '';
+            config.proxyPassword = settings.proxyConfig.password || '';
+        } else if (settings.proxyConfig.mode === 'list' && proxies.length > 0) {
+            const proxy = proxies[index % proxies.length];
+            config.proxyServer = proxy.server;
+            config.proxyUsername = proxy.username || '';
+            config.proxyPassword = proxy.password || '';
+        }
+
+        // 其他默认设置
+        config.disableNonProxiedUdp = true;
+        config.userDataRoot = '';
+
+        return config;
+    }
+
+    // 解析代理列表
+    parseProxyList() {
+        const textarea = document.getElementById('proxyListTextarea');
+        if (!textarea) return [];
+
+        const lines = textarea.value.trim().split('\n').filter(line => line.trim() !== '');
+        const proxies = [];
+
+        for (const line of lines) {
+            try {
+                const proxy = this.parseProxyString(line.trim());
+                if (proxy) {
+                    proxies.push(proxy);
+                }
+            } catch (error) {
+                console.warn('解析代理失败:', line, error);
+            }
+        }
+
+        return proxies;
+    }
+
+    // 解析单个代理字符串
+    parseProxyString(proxyStr) {
+        try {
+            // 支持格式: http://user:pass@host:port 或 host:port
+            const url = new URL(proxyStr.includes('://') ? proxyStr : `http://${proxyStr}`);
+            
+            return {
+                server: `${url.protocol}//${url.host}`,
+                username: url.username || '',
+                password: url.password || ''
+            };
+        } catch (error) {
+            // 尝试简单格式 host:port
+            const parts = proxyStr.split(':');
+            if (parts.length >= 2) {
+                return {
+                    server: `http://${parts[0]}:${parts[1]}`,
+                    username: '',
+                    password: ''
+                };
+            }
+            throw error;
+        }
+    }
+
+    // 显示/隐藏生成进度
+    showGenerateProgress(show) {
+        const progressSection = document.getElementById('generateProgress');
+        if (progressSection) {
+            progressSection.style.display = show ? 'block' : 'none';
+        }
+        
+        if (!show) {
+            this.updateGenerateProgress(0, '等待开始...');
+        }
+    }
+
+    // 更新生成进度
+    updateGenerateProgress(percent, text) {
+        const progressText = document.getElementById('generateProgressText');
+        const progressPercent = document.getElementById('generateProgressPercent');
+        const progressFill = document.getElementById('generateProgressFill');
+        const progressDetails = document.getElementById('generateProgressDetails');
+
+        if (progressText) progressText.textContent = text || '正在生成...';
+        if (progressPercent) progressPercent.textContent = `${Math.round(percent)}%`;
+        if (progressFill) progressFill.style.width = `${percent}%`;
+        if (progressDetails) progressDetails.textContent = text || '等待开始...';
+    }
+
+    // 添加生成日志
+    addGenerateLog(message, type = 'info') {
+        const logContainer = document.getElementById('generateLog');
+        if (!logContainer) return;
+
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry log-${type}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        logEntry.innerHTML = `
+            <span class="log-time">[${timestamp}]</span>
+            <span class="log-message">${message}</span>
+        `;
+
+        logContainer.appendChild(logEntry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // 清空生成日志
+    clearGenerateLog() {
+        const logContainer = document.getElementById('generateLog');
+        if (logContainer) {
+            logContainer.innerHTML = '';
+        }
+    }
+
+    // 预览生成配置
+    async previewGenerateConfigs() {
+        try {
+            const settings = this.getGenerateSettings();
+            
+            if (!this.validateGenerateSettings(settings)) {
+                return;
+            }
+
+            // 生成前3个配置作为预览
+            const previewCount = Math.min(3, settings.count);
+            const proxies = settings.proxyConfig.mode === 'list' ? this.parseProxyList() : [];
+            const previewConfigs = [];
+
+            for (let i = 0; i < previewCount; i++) {
+                const config = await this.generateSingleConfig(settings, i, proxies);
+                previewConfigs.push(config);
+            }
+
+            // 显示预览结果
+            alert(`预览生成的配置:\n\n${previewConfigs.map(c => `${c.name}: ${c.platform} ${c.brand}`).join('\n')}`);
+
+        } catch (error) {
+            console.error('预览配置失败:', error);
+            alert(`预览失败: ${error.message}`);
         }
     }
 }

@@ -203,7 +203,7 @@ class ChromeExtensionManager {
   // 为浏览器配置安装扩展
   async installExtensionsToConfig(configId, userDataDir, extensionIds = [], forceReinstall = false) {
     try {
-      const extensionsPath = path.join(userDataDir, 'Default', 'Extensions');
+      const extensionsPath = path.join(userDataDir, 'Extensions');
       await fs.mkdir(extensionsPath, { recursive: true });
       
       console.log(`🔧 为配置 ${configId} 安装扩展 (强制重装: ${forceReinstall})...`);

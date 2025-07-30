@@ -13,7 +13,7 @@ class ExtensionFileMonitor {
     // 开始监控指定配置的扩展目录
     async startMonitoring(configId, userDataDir, configName) {
         try {
-            const extensionsPath = path.join(userDataDir, 'Default', 'Extensions');
+            const extensionsPath = path.join(userDataDir, 'Extensions');
             
             console.log(`🔍 开始监控配置 "${configName}" 的扩展目录: ${extensionsPath}`);
             
@@ -351,7 +351,7 @@ class ExtensionFileMonitor {
 
     // 手动触发备份
     async manualBackup(configId, userDataDir, configName) {
-        const extensionsPath = path.join(userDataDir, 'Default', 'Extensions');
+        const extensionsPath = path.join(userDataDir, 'Extensions');
         await this.createBackup(configId, extensionsPath, configName);
     }
 }
